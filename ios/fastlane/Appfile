@@ -1,0 +1,8 @@
+app_identifier("com.squib.turf") # The bundle identifier of your app
+apple_id("squibturf@gmail.com") # Your Apple email address
+
+itc_team_id("117790467") # App Store Connect Team ID
+team_id("ED67MANCHB") # Developer Portal Team ID
+
+# For more information about the Appfile, see:
+#     https://docs.fastlane.tools/advanced/#appfile
