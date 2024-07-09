@@ -1,0 +1,83 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: aws-nodejs # NOTE: update this with your service name
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+# frameworkVersion: "=X.X.X"
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  stage: prod # Set the default stage used. Default is dev
+  region: us-east-1 # Overwrite the default region used. Default is us-east-1
+  stackName: ciphergram-${self:provider.stage} # Overwrite default CloudFormation stack name. Default is ${self:service}-${self:provider.stage}
+  apiName: ciphergram-${self:provider.stage} # Overwrite default API Gateway name. Default is ${self:provider.stage}-${self:service}
+
+functions:
+  emailSubmission:
+    handler: index.email
+    role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
+    description: Submit candidate information and starts interview process.
+    events:
+      - http: 
+          path: contact
+          method: post
+  getBlogPost:
+    handler: index.getBlogPost
+    role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
+    environment:
+      TABLE_NAME: blog_posts
+    events:
+      - http:
+          path: items/{uuid}
+          method: get
+  getBlogList:
+    handler: index.getBlogList
+    role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
+    environment:
+      TABLE_NAME: blog_posts
+    events:
+      - http:
+          path: items/
+          method: get
+  createBlogItem:
+    handler: index.createBlogItem
+    role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
+    timeout: 900
+    environment:
+      TABLE_NAME:
+      OPENAI_URL:
+      OPENAI_API_KEY: 
+      UNSPLASH_ACCESS_KEY: 
+      S3_BUCKET: 
+    events:
+      - http:
+          path: create-blog
+          method: POST
+          cors: true
+          timeoutInMillis: 900000
+  writeBlogItemsToHtml:
+    handler: index.writeBlogItemsToHtml
+    role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
+    timeout: 900
+    environment: 
+       S3_BUCKET: ciphergram.io
+       TABLE_NAME: blog_posts
+    events:
+      - http:
+          path: write-blog
+          method: POST
+          cors: true
+          timeoutInMillis: 900000
