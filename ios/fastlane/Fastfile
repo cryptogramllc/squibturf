@@ -1,0 +1,56 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Push a new beta build to TestFlight"
+  lane :beta do
+    # Skip build number increment for now to focus on build and upload
+    build_app(
+      workspace: "squibturf.xcworkspace",
+      scheme: "squibturf",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "com.squib.turf" => "SquibTurf App Store 2026"
+        },
+        uploadBitcode: false,
+        uploadSymbols: false,
+        compileBitcode: false
+      },
+      clean: true,
+      output_directory: "builds"
+    )
+    app_store_connect_api_key(
+      key_id: "5HD8DFKU36",
+      issuer_id: "69a6de86-6a23-47e3-e053-5b8c7c11a4d1",
+      key_filepath: "/Users/jibran/AuthKey_5HD8DFKU36.p8"
+    )
+    upload_to_testflight
+  end
+
+  desc "Build app for development/testing (no TestFlight upload)"
+  lane :build_dev do
+    increment_build_number(xcodeproj: "squibturf.xcodeproj")
+    build_app(
+      workspace: "squibturf.xcworkspace",
+      scheme: "squibturf",
+      export_method: "development",
+      clean: true,
+      output_directory: "builds"
+    )
+  end
+end
