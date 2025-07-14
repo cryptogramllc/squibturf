@@ -10,8 +10,11 @@ import {
     Dimensions,
     KeyboardAvoidingView,
     Keyboard,
-    Platform
+    Platform,
+    Animated,
+    PanResponder
 } from 'react-native';
+import Video from 'react-native-video';
 import { RNCamera } from 'react-native-camera';
 import Carousel from 'react-native-snap-carousel';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
@@ -61,11 +64,20 @@ interface CreateSquibState {
     caption: string | null;
     isLoading: boolean;
     takingPic?: boolean;
+    showZoomHint: boolean;
+    isRecording: boolean;
+    recordingProgress: number;
+    recordingTime: number;
+    recordedVideoUri: string | null;
+    processingType: 'photo' | 'video' | null;
+    latestVideo: string | null;
 }
 
 export default class CreateSquib extends Component<CreateSquibProps, CreateSquibState> {
     private camera: RNCamera | null = null;
     private api: any;
+    private recordingTimer: NodeJS.Timeout | null = null;
+    private progressAnimation: Animated.Value = new Animated.Value(0);
 
     constructor(props: CreateSquibProps) {
         super(props);
@@ -78,13 +90,25 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
             squib: false,
             count: 5,
             caption: null,
-            isLoading: false
+            isLoading: false,
+            showZoomHint: true,
+            isRecording: false,
+            recordingProgress: 0,
+            recordingTime: 0,
+            recordedVideoUri: null,
+            processingType: null,
+            latestVideo: null
         };
     }
 
     async componentDidMount() {
         // Request camera permission when component mounts
         await this.requestCameraPermission();
+        
+        // Hide zoom hint after 5 seconds
+        setTimeout(() => {
+            this.setState({ showZoomHint: false });
+        }, 5000);
     }
 
     _renderItem = ({ item }: { item: string; index: number }) => (
@@ -118,8 +142,17 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
         }
     };
 
+    storeVideo = async () => {
+        const { latestVideo, count } = this.state;
+        if (latestVideo) {
+            const pictures = this.state.pictures.concat(latestVideo);
+            const newAmount = count - 1;
+            this.setState({ pictures, count: newAmount });
+        }
+    };
+
     takePicture = async () => {
-        if (this.camera && !this.state.takingPic) {
+        if (this.camera && !this.state.takingPic && !this.state.isRecording) {
             // Request camera permission first
             const hasPermission = await this.requestCameraPermission();
             if (!hasPermission) {
@@ -127,7 +160,7 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                 return;
             }
 
-            this.setState({ takingPic: true });
+            this.setState({ takingPic: true, processingType: 'photo' });
             try {
                 const data = await this.camera.takePictureAsync({
                     quality: 0.1,
@@ -139,10 +172,107 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
             } catch (err: any) {
                 Alert.alert('Error', 'Failed to take picture: ' + (err?.message || err));
             } finally {
-                this.setState({ takingPic: false });
+                this.setState({ takingPic: false, processingType: null });
             }
         }
     };
+
+    startVideoRecording = async () => {
+        if (this.camera && !this.state.isRecording && !this.state.takingPic) {
+            const hasPermission = await this.requestCameraPermission();
+            if (!hasPermission) {
+                Alert.alert('Permission Denied', 'Camera permission is required to record videos.');
+                return;
+            }
+
+            try {
+                this.setState({ 
+                    isRecording: true, 
+                    recordingProgress: 0, 
+                    recordingTime: 0,
+                    processingType: 'video'
+                });
+                
+                // Start progress animation
+                this.progressAnimation.setValue(0);
+                Animated.timing(this.progressAnimation, {
+                    toValue: 1,
+                    duration: 10000, // 10 seconds
+                    useNativeDriver: false
+                }).start();
+
+                // Start recording timer
+                this.recordingTimer = setInterval(() => {
+                    this.setState(prevState => ({
+                        recordingTime: prevState.recordingTime + 0.1,
+                        recordingProgress: Math.min((prevState.recordingTime + 0.1) / 10, 1)
+                    }));
+                }, 100);
+
+                // Start video recording with optimized settings for GIF conversion
+                const options = {
+                    quality: RNCamera.Constants.VideoQuality['480p'], // Lower quality for smaller file
+                    maxDuration: 10,
+                    maxFileSize: 10 * 1024 * 1024, // 10MB limit
+                    mute: false,
+                    codec: RNCamera.Constants.VideoCodec.H264 // Standard codec for better compatibility
+                };
+
+                const recordingPromise = this.camera.recordAsync(options);
+                
+                // Auto-stop after 10 seconds
+                setTimeout(() => {
+                    this.stopVideoRecording();
+                }, 10000);
+
+                // Wait for recording to complete and get the video URI
+                const videoData = await recordingPromise;
+                console.log('Video recording completed:', videoData);
+                console.log('Video URI:', videoData.uri);
+                this.setState({ latestVideo: videoData.uri });
+
+            } catch (err: any) {
+                Alert.alert('Error', 'Failed to start recording: ' + (err?.message || err));
+                this.setState({ isRecording: false });
+            }
+        }
+    };
+
+    stopVideoRecording = async () => {
+        if (this.camera && this.state.isRecording) {
+            try {
+                // Stop recording
+                this.camera.stopRecording();
+                this.setState({ isRecording: false });
+                
+                // Clear timer and animation
+                if (this.recordingTimer) {
+                    clearInterval(this.recordingTimer);
+                    this.recordingTimer = null;
+                }
+                this.progressAnimation.stopAnimation();
+                
+
+                
+            } catch (error) {
+                console.error('Error stopping recording:', error);
+                this.setState({ isRecording: false });
+                Alert.alert('Error', 'Failed to save video recording');
+            }
+        }
+    };
+
+    onRecordingStart = () => {
+        console.log('Recording started');
+    };
+
+    onRecordingEnd = () => {
+        console.log('Recording ended');
+        // The video URI will be available in the recording data
+        // We'll handle it in the stopVideoRecording method
+    };
+
+
 
     triggerClose = (event: any) => {
         this.props.close?.(true);
@@ -263,7 +393,13 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
             count,
             pictures,
             caption,
-            isLoading
+            isLoading,
+            showZoomHint,
+            isRecording,
+            recordingProgress,
+            recordingTime,
+            processingType,
+            latestVideo
         } = this.state;
         const Icon: any = FontAwesome;
         return (
@@ -435,6 +571,108 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                     </View>
                 }
 
+                {latestVideo &&
+                    <View style={{
+                        flex: 1,
+                        position: 'absolute',
+                        zIndex: 1000,
+                        height: '100%',
+                        width: '100%',
+                        backgroundColor: 'black'
+                    }}>
+                        <View style={{
+                            height: 50,
+                            width: 50,
+                            position: 'absolute',
+                            top: 35,
+                            right: 25,
+                            zIndex: 1002
+                        }}>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    this.setState({ isRecording: false, latestVideo: null });
+                                    this.props.close?.(true);
+                                }}
+                                style={{}}>
+                                <Icon name="times" style={{ marginTop: 10 }} color={'white'} size={30} />
+                            </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => {
+                                this.setState({ isRecording: false, latestVideo: null });
+                                this.storeVideo();
+                            }}
+                            style={{
+                                position: 'absolute',
+                                zIndex: 1001,
+                                borderWidth: 8,
+                                borderColor: 'white',
+                                borderRadius: 200,
+                                height: 150,
+                                width: 150,
+                                left: '50%',
+                                top: '50%',
+                                marginLeft: -75,
+                                marginTop: -200,
+                                opacity: 0.5
+                            }}>
+                            <Icon name="check" style={{ marginTop: 15, marginLeft: 15 }} color={'white'} size={100} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => {
+                                this.setState({ isRecording: false, latestVideo: null });
+                            }}
+                            style={{
+                                position: 'absolute',
+                                zIndex: 1001,
+                                borderWidth: 8,
+                                borderColor: 'white',
+                                borderRadius: 200,
+                                height: 150,
+                                width: 150,
+                                left: '50%',
+                                top: '50%',
+                                marginLeft: -75,
+                                marginTop: 50,
+                                opacity: 0.5
+                            }}>
+                            <Icon name="times" style={{ marginTop: 10, marginLeft: 28 }} color={'white'} size={100} />
+                        </TouchableOpacity>
+                        <View style={{
+                            position: 'absolute',
+                            top: 100,
+                            left: 0,
+                            right: 0,
+                            alignItems: 'center',
+                            zIndex: 1001
+                        }}>
+                            <Text style={{
+                                color: 'white',
+                                fontSize: 18,
+                                fontWeight: 'bold',
+                                backgroundColor: 'rgba(0,0,0,0.7)',
+                                paddingHorizontal: 15,
+                                paddingVertical: 8,
+                                borderRadius: 20
+                            }}>
+                                Video Preview
+                            </Text>
+                        </View>
+                        <Video
+                            source={{ uri: latestVideo }}
+                            style={{
+                                flex: 1,
+                                width: '100%',
+                                height: '100%'
+                            }}
+                            resizeMode="cover"
+                            repeat={true}
+                            paused={false}
+                            muted={true}
+                        />
+                    </View>
+                }
+
                 {camera &&
                     <>
                         {/* For camera (right arrow) */}
@@ -503,14 +741,78 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                                     }}>Proceed to Next Step</Text>
                                 }
                             </View>
-                            <RNCamera
-                                style={{ flex: 1, alignItems: 'center' }}
-                                ref={ref => {
-                                    this.camera = ref;
-                                }}
-                                captureAudio={false}
-                                type={backCam ? RNCamera.Constants.Type.back : RNCamera.Constants.Type.front}
-                            />
+                                                         <RNCamera
+                                 style={{ flex: 1, alignItems: 'center' }}
+                                 ref={ref => {
+                                     this.camera = ref;
+                                 }}
+                                 captureAudio={false}
+                                 type={backCam ? RNCamera.Constants.Type.back : RNCamera.Constants.Type.front}
+                                 useNativeZoom={true}
+                                 maxZoom={5}
+                                 onRecordingStart={this.onRecordingStart}
+                                 onRecordingEnd={this.onRecordingEnd}
+                             />
+                             {showZoomHint && (
+                                 <View style={{
+                                     position: 'absolute',
+                                     top: 120,
+                                     left: 0,
+                                     right: 0,
+                                     alignItems: 'center',
+                                     zIndex: 1001
+                                 }}>
+                                     <Text style={{
+                                         color: 'white',
+                                         fontSize: 16,
+                                         fontWeight: 'bold',
+                                         textAlign: 'center',
+                                         backgroundColor: 'rgba(0,0,0,0.6)',
+                                         paddingHorizontal: 15,
+                                         paddingVertical: 8,
+                                         borderRadius: 20
+                                     }}>
+                                         Pinch to zoom
+                                     </Text>
+                                 </View>
+                             )}
+                             
+                             {/* Camera/Video Instructions */}
+                             <View style={{
+                                 position: 'absolute',
+                                 bottom: 120,
+                                 left: 0,
+                                 right: 0,
+                                 alignItems: 'center',
+                                 zIndex: 1001
+                             }}>
+                                 <View style={{
+                                     backgroundColor: 'rgba(0,0,0,0.6)',
+                                     paddingHorizontal: 20,
+                                     paddingVertical: 10,
+                                     borderRadius: 20,
+                                     flexDirection: 'row',
+                                     alignItems: 'center'
+                                 }}>
+                                     <Icon name="camera" color="white" size={16} style={{ marginRight: 8 }} />
+                                     <Text style={{
+                                         color: 'white',
+                                         fontSize: 14,
+                                         fontWeight: 'bold',
+                                         marginRight: 15
+                                     }}>
+                                         Tap for photo
+                                     </Text>
+                                     <Icon name="video-camera" color="white" size={16} style={{ marginRight: 8 }} />
+                                     <Text style={{
+                                         color: 'white',
+                                         fontSize: 14,
+                                         fontWeight: 'bold'
+                                     }}>
+                                         Hold for video
+                                     </Text>
+                                 </View>
+                             </View>
                             {count > 0 &&
                                 <>
                                     <TouchableOpacity
@@ -533,21 +835,76 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                                         onPress={this.pickImageFromLibrary}>
                                         <Icon name="image" style={{ marginTop: 10 }} color={'white'} size={40} />
                                     </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={{
-                                            height: 80,
-                                            width: 80,
-                                            borderRadius: 100,
-                                            backgroundColor: '#44C1AF',
-                                            bottom: 30,
-                                            position: 'absolute',
-                                            borderWidth: 5,
-                                            borderColor: "white",
-                                            left: '50%',
-                                            marginLeft: -40,
-                                        }}
-                                        onPress={this.takePicture}
-                                    />
+                                                                         <View style={{
+                                         position: 'absolute',
+                                         bottom: 30,
+                                         left: '50%',
+                                         marginLeft: -40,
+                                         alignItems: 'center',
+                                         justifyContent: 'center'
+                                     }}>
+                                         {/* Circular Progress Border */}
+                                         <Animated.View style={{
+                                             position: 'absolute',
+                                             width: 90,
+                                             height: 90,
+                                             borderRadius: 45,
+                                             borderWidth: 3,
+                                             borderColor: isRecording ? '#ff4444' : 'transparent',
+                                             borderLeftColor: 'transparent',
+                                             borderBottomColor: 'transparent',
+                                             transform: [{
+                                                 rotate: this.progressAnimation.interpolate({
+                                                     inputRange: [0, 1],
+                                                     outputRange: ['0deg', '360deg']
+                                                 })
+                                             }]
+                                         }} />
+                                         
+                                         {/* Main Camera Button */}
+                                         <TouchableOpacity
+                                             style={{
+                                                 height: 80,
+                                                 width: 80,
+                                                 borderRadius: 100,
+                                                 backgroundColor: isRecording ? '#ff4444' : '#44C1AF',
+                                                 borderWidth: 5,
+                                                 borderColor: "white",
+                                                 alignItems: 'center',
+                                                 justifyContent: 'center'
+                                             }}
+                                             onPress={this.takePicture}
+                                             onLongPress={this.startVideoRecording}
+                                             onPressOut={isRecording ? this.stopVideoRecording : undefined}
+                                             delayLongPress={200}
+                                         >
+                                             <Icon 
+                                                 name={isRecording ? "stop" : "camera"} 
+                                                 color="white" 
+                                                 size={30} 
+                                             />
+                                         </TouchableOpacity>
+                                         
+                                         {/* Recording Time Display */}
+                                         {isRecording && (
+                                             <View style={{
+                                                 position: 'absolute',
+                                                 top: -40,
+                                                 backgroundColor: 'rgba(0,0,0,0.7)',
+                                                 paddingHorizontal: 10,
+                                                 paddingVertical: 5,
+                                                 borderRadius: 15
+                                             }}>
+                                                 <Text style={{
+                                                     color: 'white',
+                                                     fontSize: 14,
+                                                     fontWeight: 'bold'
+                                                 }}>
+                                                     {recordingTime.toFixed(1)}s
+                                                 </Text>
+                                             </View>
+                                         )}
+                                     </View>
                                 </>
                             }
                         </View>
@@ -580,15 +937,15 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                                 size={40}
                                 style={{ marginTop: 35, marginLeft: 55 }}
                             />
-                            <Text
-                                style={{
-                                    color: '#44C1AF',
-                                    marginTop: 20,
-                                    marginLeft: 25,
-                                    textAlign: 'center',
-                                    width: 100
-                                }}
-                            > Posting, Please Wait. </Text>
+                                                         <Text
+                                 style={{
+                                     color: '#44C1AF',
+                                     marginTop: 20,
+                                     marginLeft: 25,
+                                     textAlign: 'center',
+                                     width: 100
+                                 }}
+                             > {processingType === 'video' ? 'Converting to GIF...' : 'Posting...'} </Text>
                         </View>
                     </View>
                 }

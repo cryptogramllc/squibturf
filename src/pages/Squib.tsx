@@ -10,6 +10,7 @@ import {
     Alert,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
+import Video from 'react-native-video';
 const SquibApi = require('../api/index');
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
             data: any;
             text: string;
             image: string[];
+            video?: string[];
+            type?: string;
         };
     };
     navigation: any;
@@ -37,6 +40,7 @@ interface State {
     fadeAnimation: Animated.Value;
     imageLoadError: boolean;
     imageLoading: boolean;
+    aspectRatio: number | null; // <-- add aspectRatio to state
 }
 
 export default class Squib extends Component<Props, State> {
@@ -52,12 +56,20 @@ export default class Squib extends Component<Props, State> {
             fadeAnimation: new Animated.Value(1), // Initialize with 1 for opacity
             imageLoadError: false,
             imageLoading: true,
+            aspectRatio: null, // <-- initialize aspectRatio
         };
     }
 
     async componentDidMount() {
         const data = await this.api.getComment();
         data && this.setState({ data });
+        this.setImageAspectRatio();
+    }
+
+    componentDidUpdate(prevProps: Props, prevState: State) {
+        if (prevState.currentImage !== this.state.currentImage) {
+            this.setImageAspectRatio();
+        }
     }
 
     updateComment = (value: string) => {
@@ -132,8 +144,24 @@ export default class Squib extends Component<Props, State> {
         console.log('Testing with placeholder image URL:', testUrl);
     };
 
+    setImageAspectRatio = () => {
+        const { image } = this.props.route.params;
+        const { currentImage } = this.state;
+        if (image && image.length > 0 && image[currentImage]) {
+            Image.getSize(
+                `https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`,
+                (width, height) => {
+                    this.setState({ aspectRatio: width / height });
+                },
+                (error) => {
+                    this.setState({ aspectRatio: 1 }); // fallback
+                }
+            );
+        }
+    };
+
     render() {
-        const { text, image } = this.props.route.params;
+        const { text, image, video, type } = this.props.route.params;
         const { navigation } = this.props;
         const { data, currentImage } = this.state;
         const Icon: any = FontAwesome;
@@ -145,6 +173,10 @@ export default class Squib extends Component<Props, State> {
         if (image && image.length > 0) {
             const constructedUri = `https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`;
             console.log('Squib detail page - constructed image URI:', constructedUri);
+        }
+        if (video && video.length > 0) {
+            const constructedVideoUri = `https://squibturf-images.s3.amazonaws.com//${video[0]}`;
+            console.log('Squib detail page - constructed video URI:', constructedVideoUri);
         }
         this.fadeOut();
 
@@ -195,131 +227,146 @@ export default class Squib extends Component<Props, State> {
                         </TouchableOpacity>
                     </View>
                 )}
-                <View style={{ flexGrow: 1, justifyContent: 'space-between' }}>
-                    {image && image.length > 0 && image[currentImage] ? (
-                        <View style={styles.squibImageContainer}>
-                            <TouchableOpacity
-                                style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
-                                activeOpacity={0.8}
-                                onPress={() =>
-                                    this.setState({
-                                        currentImage:
-                                            currentImage !== image.length - 1
-                                                ? currentImage + 1
-                                                : 0,
-                                    })
-                                }
-                            >
-                                <Image
-                                    source={{
-                                        uri: `https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`,
-                                        headers: {
-                                            'User-Agent': 'ReactNative',
-                                        },
-                                        cache: 'reload',
-                                    }}
-                                    style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
-                                    onLoad={this.handleImageLoad}
-                                    onError={this.handleImageError}
-                                    onLoadStart={this.handleImageLoadStart}
-                                />
-                                {this.state.imageLoadError && (
-                                    <View style={styles.errorContainer}>
-                                        <Text style={styles.errorText}>Failed to load image</Text>
-                                        <Text style={styles.errorText}>URL: {`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`}</Text>
-                                        <TouchableOpacity 
-                                            style={styles.testButton}
-                                            onPress={() => this.testImageUrl(`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`)}
-                                        >
-                                            <Text style={styles.testButtonText}>Test URL</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity 
-                                            style={styles.testButton}
-                                            onPress={this.testWithKnownImage}
-                                        >
-                                            <Text style={styles.testButtonText}>Test Placeholder</Text>
-                                        </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, position: 'absolute', width: '100%', height: '100%' }}>
+                        {video && video.length > 0 && video[0] ? (
+                            <Video
+                                source={{ uri: `https://squibturf-images.s3.amazonaws.com//${video[0]}` }}
+                                style={{ width: '100%', height: '100%' }}
+                                resizeMode="cover"
+                                repeat
+                                paused={false}
+                                muted
+                            />
+                        ) : image && image.length > 0 && image[currentImage] ? (
+                            <View style={{ flex: 1, justifyContent: 'center' }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center' }}
+                                    activeOpacity={0.8}
+                                    onPress={() =>
+                                        this.setState({
+                                            currentImage:
+                                                currentImage !== image.length - 1
+                                                    ? currentImage + 1
+                                                    : 0,
+                                        })
+                                    }
+                                >
+                                    <Image
+                                        source={{
+                                            uri: `https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`,
+                                            headers: {
+                                                'User-Agent': 'ReactNative',
+                                            },
+                                            cache: 'reload',
+                                        }}
+                                        style={{ width: '100%', height: undefined, aspectRatio: this.state.aspectRatio || 1 }}
+                                        resizeMode="contain"
+                                        onLoad={this.handleImageLoad}
+                                        onError={this.handleImageError}
+                                        onLoadStart={this.handleImageLoadStart}
+                                    />
+                                    {this.state.imageLoadError && (
+                                        <View style={styles.errorContainer}>
+                                            <Text style={styles.errorText}>Failed to load image</Text>
+                                            <Text style={styles.errorText}>URL: {`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`}</Text>
+                                            <TouchableOpacity 
+                                                style={styles.testButton}
+                                                onPress={() => this.testImageUrl(`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`)}
+                                            >
+                                                <Text style={styles.testButtonText}>Test URL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={styles.testButton}
+                                                onPress={this.testWithKnownImage}
+                                            >
+                                                <Text style={styles.testButtonText}>Test Placeholder</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                                {image.length > 1 && (
+                                    <View style={styles.imageCounter}>
+                                        <Text style={styles.counterText}>
+                                            {this.state.currentImage + 1} / {image.length}
+                                        </Text>
                                     </View>
                                 )}
-                            </TouchableOpacity>
-                            {image.length > 1 && (
-                                <View style={styles.imageCounter}>
-                                    <Text style={styles.counterText}>
-                                        {currentImage + 1} / {image.length}
+                            </View>
+                        ) : (
+                            <View style={{ flex: 1, justifyContent: 'center' }}>
+                                <TouchableOpacity
+                                    style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center' }}
+                                    onPress={() =>
+                                        this.setState({
+                                            currentImage:
+                                                currentImage !== image.length - 1
+                                                    ? currentImage + 1
+                                                    : 0,
+                                        })
+                                    }
+                                >
+                                    <Image
+                                        source={{
+                                            uri: `https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`,
+                                            headers: {
+                                                'User-Agent': 'ReactNative',
+                                            },
+                                            cache: 'reload',
+                                        }}
+                                        style={{ width: '100%', height: undefined, aspectRatio: this.state.aspectRatio || 1 }}
+                                        resizeMode="contain"
+                                        onLoad={this.handleImageLoad}
+                                        onError={this.handleImageError}
+                                        onLoadStart={this.handleImageLoadStart}
+                                        fadeDuration={0}
+                                        progressiveRenderingEnabled={true}
+                                    />
+                                    {this.state.imageLoading && (
+                                        <View style={styles.loadingContainer}>
+                                            <Text style={styles.loadingText}>Loading image...</Text>
+                                        </View>
+                                    )}
+                                    {this.state.imageLoadError && (
+                                        <View style={styles.errorContainer}>
+                                            <Text style={styles.errorText}>Failed to load image</Text>
+                                            <Text style={styles.errorText}>URL: {`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`}</Text>
+                                            <TouchableOpacity 
+                                                style={styles.testButton}
+                                                onPress={() => this.testImageUrl(`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`)}
+                                            >
+                                                <Text style={styles.testButtonText}>Test URL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={styles.testButton}
+                                                onPress={this.testWithKnownImage}
+                                            >
+                                                <Text style={styles.testButtonText}>Test Placeholder</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                                <Animated.View
+                                    style={[
+                                        styles.helperTextCont,
+                                        {
+                                            opacity: this.state.fadeAnimation,
+                                        },
+                                    ]}
+                                >
+                                    <Text style={styles.helperText}>
+                                        Tap to see next image
                                     </Text>
-                                </View>
-                            )}
-                        </View>
-                    ) : (
-                        <View style={styles.squibImageContainer}>
-                            <TouchableOpacity
-                                onPress={() =>
-                                    this.setState({
-                                        currentImage:
-                                            currentImage !== image.length - 1
-                                                ? currentImage + 1
-                                                : 0,
-                                    })
-                                }
-                            >
-                                <Image
-                                    source={{
-                                        uri: `https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`,
-                                        headers: {
-                                            'User-Agent': 'ReactNative',
-                                        },
-                                        cache: 'reload',
-                                    }}
-                                    style={styles.squibImage}
-                                    onLoad={this.handleImageLoad}
-                                    onError={this.handleImageError}
-                                    onLoadStart={this.handleImageLoadStart}
-                                    resizeMode="cover"
-                                    fadeDuration={0}
-                                    progressiveRenderingEnabled={true}
-                                />
-                                {this.state.imageLoading && (
-                                    <View style={styles.loadingContainer}>
-                                        <Text style={styles.loadingText}>Loading image...</Text>
-                                    </View>
-                                )}
-                                {this.state.imageLoadError && (
-                                    <View style={styles.errorContainer}>
-                                        <Text style={styles.errorText}>Failed to load image</Text>
-                                        <Text style={styles.errorText}>URL: {`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`}</Text>
-                                        <TouchableOpacity 
-                                            style={styles.testButton}
-                                            onPress={() => this.testImageUrl(`https://squibturf-images.s3.amazonaws.com//${image[currentImage]}`)}
-                                        >
-                                            <Text style={styles.testButtonText}>Test URL</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity 
-                                            style={styles.testButton}
-                                            onPress={this.testWithKnownImage}
-                                        >
-                                            <Text style={styles.testButtonText}>Test Placeholder</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                            </TouchableOpacity>
-                            <Animated.View
-                                style={[
-                                    styles.helperTextCont,
-                                    {
-                                        opacity: this.state.fadeAnimation,
-                                    },
-                                ]}
-                            >
-                                <Text style={styles.helperText}>
-                                    Tap to see next image
-                                </Text>
-                            </Animated.View>
-                        </View>
-                    )}
+                                </Animated.View>
+                            </View>
+                        )}
+                    </View>
                     {text && (
-                        <Text style={styles.squibText}>
-                            &quot; {text} &quot;
-                        </Text>
+                        <View style={{ width: '100%', position: 'absolute', bottom: 0, zIndex: 999 }}>
+                            <Text style={styles.squibText}>
+                                &quot; {text} &quot;
+                            </Text>
+                        </View>
                     )}
                 </View>
             </View>
@@ -354,9 +401,6 @@ const styles = StyleSheet.create({
     squibText: {
         padding: 30,
         fontSize: 18,
-        position: 'absolute',
-        bottom: 0,
-        zIndex: 999,
         width: '100%',
         textAlign: 'center',
         color: 'white',

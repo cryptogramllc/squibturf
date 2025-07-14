@@ -10,6 +10,7 @@ import { createStackNavigator, StackNavigationProp } from '@react-navigation/sta
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import NewsPage from './src/pages/NewsPage';
 import CreateSquib from './src/pages/CreateSquib';
@@ -169,7 +170,7 @@ export default class App extends Component<AppProps, AppState> {
     const { tracking } = this.state;
     const Icon: any = FontAwesome;
     return (
-      <>
+      <GestureHandlerRootView style={{ flex: 1 }}>
         <NavigationContainer ref={this.navigationRef}>
           <Stack.Navigator>
             <Stack.Screen
@@ -230,7 +231,7 @@ export default class App extends Component<AppProps, AppState> {
               this.setState({ data: {} })
             }} />
         </ModalItem>
-      </>
+      </GestureHandlerRootView>
     );
   }
 }

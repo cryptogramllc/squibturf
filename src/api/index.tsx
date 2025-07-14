@@ -30,31 +30,58 @@ function SquibAPI() {
 
 SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
     const fileNames = [];
-    for (const image of images) {
+    const videoFiles = [];
+
+    for (const asset of images) {
+        let isVideo = false;
+        let file, ext, mime;
         try {
-            const resize = await ImageResizer.createResizedImage(
-                image,
-                640,
-                640,
-                'JPEG',
-                90,
-                0,
-                undefined,
-                false,
-                {
-                    mode: 'contain',
-                    onlyScaleDown: false,
-                },
-            );
-            const file = {
-                uri: resize.uri,
-                name: `${uuidv4()}.jpg`,
-                type: 'image/jpg',
-            };
-            fileNames.push(file.name);
-            await RNS3.put(file, this.s3Options);
+            if (typeof asset === 'string' && (asset.endsWith('.mp4') || asset.endsWith('.mov'))) {
+                isVideo = true;
+                ext = asset.endsWith('.mov') ? 'mov' : 'mp4';
+                mime = ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+                file = {
+                    uri: asset,
+                    name: `${uuidv4()}.${ext}`,
+                    type: mime,
+                };
+                videoFiles.push(file.name);
+                console.log(`[SquibAPI] Uploading video to S3: ${file.name} (ext: ${ext}, mime: ${mime})`);
+            } else {
+                ext = 'jpg';
+                mime = 'image/jpg';
+                const resize = await ImageResizer.createResizedImage(
+                    asset,
+                    640,
+                    640,
+                    'JPEG',
+                    90,
+                    0,
+                    undefined,
+                    false,
+                    {
+                        mode: 'contain',
+                        onlyScaleDown: false,
+                    },
+                );
+                file = {
+                    uri: resize.uri,
+                    name: `${uuidv4()}.jpg`,
+                    type: mime,
+                };
+                fileNames.push(file.name);
+                console.log(`[SquibAPI] Uploading image to S3: ${file.name}`);
+            }
+            const uploadResult = await RNS3.put(file, this.s3Options);
+            if (uploadResult.status !== 201) {
+                console.error(`[SquibAPI] S3 upload failed for ${file.name}:`, uploadResult);
+                throw new Error(`S3 upload failed for ${file.name}`);
+            } else {
+                console.log(`[SquibAPI] S3 upload successful for ${file.name}`);
+            }
         } catch (err) {
-            console.log(err);
+            console.error(`[SquibAPI] Error uploading file: ${asset}`, err);
+            throw err;
         }
     }
     // Helper to fetch location metadata
@@ -84,16 +111,27 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
             lat: lat.toFixed(2),
             uuid: uuidv4(),
             image: fileNames,
+            video: videoFiles.length > 0 ? videoFiles : undefined,
             user_id: pdata.uuid,
             user_name: pdata.name,
             time_stamp: moment().format('MMM DD YYYY h:mm A'),
             date_key: Date.now(), // Add epoch time for sorting
             location, // Add location info here
+            type: videoFiles.length > 0 ? 'video' : 'photo',
         };
+        console.log('[SquibAPI] Sending squib data to server:', {
+            text: data.text,
+            imageCount: data.image.length,
+            videoCount: videoFiles.length,
+            type: data.type,
+            location: data.location
+        });
         const response = await this.api.post('/create-squib', data);
+        console.log('[SquibAPI] Server response:', response.data);
         return response;
     } catch (err) {
-        console.log(err);
+        console.error('[SquibAPI] Error posting squib to server:', err);
+        throw err;
     }
 };
 
@@ -193,6 +231,8 @@ SquibAPI.prototype.sendProfile = async function (data) {
     }
     return response;
 };
+
+
 
 SquibAPI.prototype.deleteSquib = async function (data) {
     let response;

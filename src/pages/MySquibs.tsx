@@ -16,6 +16,7 @@ const SquibApi = require("../api");
 interface NewsItemData {
     text: string;
     image: string;
+    video?: string;
     uuid: string;
     user_id: string;
     post_id: string;
@@ -24,6 +25,7 @@ interface NewsItemData {
     lat?: number;
     lon?: number;
     location?: { city?: string; state?: string; country?: string };
+    type?: 'photo' | 'video';
 }
 
 interface Props {
@@ -154,12 +156,14 @@ export default class MySquibs extends Component<Props, State> {
                                 <NewsItem
                                     text={item.text}
                                     img={typeof item.image === 'string' ? item.image.split(',') : Array.isArray(item.image) ? item.image : []}
+                                    video={item.video ? (Array.isArray(item.video) ? item.video : [item.video]) : undefined}
                                     name="You"
                                     time={item.time_stamp.toString()}
                                     onPress={() => {
                                         const navData = {
                                             text: item.text,
                                             image: typeof item.image === 'string' ? item.image.split(',') : Array.isArray(item.image) ? item.image : [],
+                                            video: item.video ? (Array.isArray(item.video) ? item.video : [item.video]) : undefined,
                                             user_id: item.user_id,
                                             post_id: item.post_id
                                         };
@@ -168,6 +172,7 @@ export default class MySquibs extends Component<Props, State> {
                                     lat={item.lat}
                                     lon={item.lon}
                                     location={item.location}
+                                    type={item.type}
                                 />
                                 <TouchableOpacity
                                     style={{ position: 'absolute', bottom: 40, right: 30 }}

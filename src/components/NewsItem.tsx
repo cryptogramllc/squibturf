@@ -8,10 +8,12 @@ import {
     StyleSheet,
     ImageSourcePropType, // Import type definition for ImageSourcePropType
 } from 'react-native';
+import Video from 'react-native-video';
 import moment from 'moment'; // Use ES6 import for moment
 
 interface NewsItemProps {
     img?: string[]; // Optional array of image URIs
+    video?: string[]; // Optional array of video URIs
     text?: string; // Optional text content
     name: string; // Required name of the author
     time: string; // Required timestamp as string
@@ -19,12 +21,15 @@ interface NewsItemProps {
     lat?: number | string; // Optional latitude
     lon?: number | string; // Optional longitude
     location?: { city?: string; state?: string; country?: string }; // Optional location object
+    type?: 'photo' | 'video'; // Optional content type
 }
 
-const NewsItem: React.FC<NewsItemProps> = ({ img, text, name, time, onPress, lat, lon, location }) => {
+const NewsItem: React.FC<NewsItemProps> = ({ img, video, text, name, time, onPress, lat, lon, location, type }) => {
     const [locationInfo] = useState<{city?: string, state?: string, country?: string} | null>(location || null);
 
-    // No more useEffect or fetchLocationMetadata logic
+    // Calculate total media count and width
+    const totalMedia = (img?.length || 0) + (video?.length || 0);
+    const mediaFlexBasis = totalMedia > 0 ? 100 / totalMedia : 100;
 
     return (
         <>
@@ -32,13 +37,13 @@ const NewsItem: React.FC<NewsItemProps> = ({ img, text, name, time, onPress, lat
                 onPress={onPress}
                 style={styles.newsItem}>
                 <View style={styles.container}>
-                    {
-                        (img && img.length > 0) &&
+                    {/* Render Images */}
+                    {img && img.length > 0 &&
                         img.map((image, key) => (
                             image && <Image
-                                key={key}
+                                key={`img-${key}`}
                                 source={{ uri: `https://squibturf-images.s3.amazonaws.com//${image}` }}
-                                style={styles.newsItem_image}
+                                style={[styles.newsItem_media, { flexBasis: `${mediaFlexBasis}%` }]}
                                 onLoadStart={() => {
                                     console.log(`[NewsItem] [${key}] Loading image: https://squibturf-images.s3.amazonaws.com//${image}`);
                                 }}
@@ -49,6 +54,34 @@ const NewsItem: React.FC<NewsItemProps> = ({ img, text, name, time, onPress, lat
                                     console.error(`[NewsItem] [${key}] Failed to load image: https://squibturf-images.s3.amazonaws.com//${image}`, e.nativeEvent);
                                 }}
                             />
+                        ))
+                    }
+                    {/* Render Videos */}
+                    {video && video.length > 0 &&
+                        video.map((videoFile, key) => (
+                            videoFile &&
+                            <View key={`video-${key}`} style={[styles.videoContainer, { flexBasis: `${mediaFlexBasis}%` }]}>
+                                <Video
+                                    source={{ uri: `https://squibturf-images.s3.amazonaws.com//${videoFile}` }}
+                                    style={[styles.newsItem_media, { width: '100%' }]}
+                                    resizeMode="cover"
+                                    repeat={true}
+                                    paused={false}
+                                    muted={true}
+                                    onLoadStart={() => {
+                                        console.log(`[NewsItem] [${key}] Loading video: https://squibturf-images.s3.amazonaws.com//${videoFile}`);
+                                    }}
+                                    onLoad={() => {
+                                        console.log(`[NewsItem] [${key}] Loaded video successfully: https://squibturf-images.s3.amazonaws.com//${videoFile}`);
+                                    }}
+                                    onError={(e) => {
+                                        console.error(`[NewsItem] [${key}] Failed to load video: https://squibturf-images.s3.amazonaws.com//${videoFile}`, e);
+                                    }}
+                                />
+                                <View style={styles.videoOverlay}>
+                                    <Text style={styles.videoIcon}>▶</Text>
+                                </View>
+                            </View>
                         ))
                     }
                 </View>
@@ -120,10 +153,35 @@ const styles = StyleSheet.create({
         top: -10,
         width: '100%',
     },
-    newsItem_image: {
+    newsItem_media: {
+        height: 250,
+        flex: 1,
+    },
+    newsItem_video: {
         height: 250,
         width: '20%',
         flex: 1,
+    },
+    videoContainer: {
+        position: 'relative',
+        flex: 1,
+    },
+    videoOverlay: {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: [{ translateX: -15 }, { translateY: -15 }],
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: 20,
+        width: 30,
+        height: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    videoIcon: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
     locationText: {
         fontSize: 14,

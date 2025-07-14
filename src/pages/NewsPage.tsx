@@ -17,6 +17,7 @@ const SquibApi = require("../api/index");
 interface NewsItemData {
     text: string;
     image: string;
+    video?: string;
     user_name: string;
     user_id: string;
     post_id: string;
@@ -24,6 +25,7 @@ interface NewsItemData {
     lat?: number;
     lon?: number;
     location?: { city?: string; state?: string; country?: string };
+    type?: 'photo' | 'video';
 }
 
 interface Props {
@@ -178,12 +180,14 @@ export default class NewsPage extends Component<Props, State> {
                                     key={index}
                                     text={item.text}
                                     img={Array.isArray(item.image) ? item.image : (typeof item.image === 'string' ? item.image.split(',') : [])}
+                                    video={item.video ? (Array.isArray(item.video) ? item.video : [item.video]) : undefined}
                                     name={item.user_name}
                                     time={item.time_stamp.toString()}
                                     onPress={() => {
                                         const data = {
                                             text: item.text,
                                             image: Array.isArray(item.image) ? item.image : (typeof item.image === 'string' ? item.image.split(',') : []),
+                                            video: item.video ? (Array.isArray(item.video) ? item.video : [item.video]) : undefined,
                                             user_id: item.user_id,
                                             post_id: item.post_id
                                         };
@@ -193,6 +197,7 @@ export default class NewsPage extends Component<Props, State> {
                                     lat={item.lat}
                                     lon={item.lon}
                                     location={item.location}
+                                    type={item.type}
                                 />
                             ))}
                     </ScrollView>
