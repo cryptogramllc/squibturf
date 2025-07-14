@@ -141,27 +141,34 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
     };
 
     storePic = async () => {
-        const { latestPic, count, latestVideo } = this.state;
-        if (latestVideo) return;
-        if (latestPic && count > 0) {
-            const pictures = Array.isArray(this.state.pictures) ? this.state.pictures.concat(latestPic) : [latestPic];
-            const newAmount = count - 1;
-            this.setState({ pictures, count: newAmount });
+        const { latestPic, pictures, latestVideo } = this.state;
+        // Only allow up to 5 total media assets
+        const videoCount = pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length + (latestVideo ? 1 : 0);
+        const totalCount = pictures.length + (latestPic ? 1 : 0) + (latestVideo ? 1 : 0);
+        if (totalCount >= 5) return;
+        if (latestPic) {
+            const newPictures = Array.isArray(pictures) ? pictures.concat(latestPic) : [latestPic];
+            this.setState({ pictures: newPictures });
         }
     };
 
     storeVideo = async () => {
         const { latestVideo, pictures } = this.state;
-        if (latestVideo && (!Array.isArray(pictures) || pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length === 0)) {
-            const newPictures = Array.isArray(pictures) ? pictures.concat(latestVideo) : [latestVideo];
-            this.setState({ pictures: newPictures, count: 0 });
-        }
+        // Only allow one video in total
+        const videoCount = pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length;
+        if (videoCount > 0 || !latestVideo) return;
+        // Only allow up to 5 total media assets
+        if (pictures.length >= 5) return;
+        const newPictures = Array.isArray(pictures) ? pictures.concat(latestVideo) : [latestVideo];
+        this.setState({ pictures: newPictures, latestVideo: null });
     };
 
     takePicture = async () => {
-        const { latestVideo, count } = this.state;
-        // If a video has already been taken, do not allow more pictures
-        if (latestVideo || count <= 0) return;
+        const { pictures, latestVideo } = this.state;
+        // Only allow up to 5 total media assets
+        const videoCount = pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length + (latestVideo ? 1 : 0);
+        const totalCount = pictures.length + (latestVideo ? 1 : 0);
+        if (totalCount >= 5) return;
         if (this.camera && !this.state.takingPic && !this.state.isRecording) {
             // Request camera permission first
             const hasPermission = await this.requestCameraPermission();
@@ -188,9 +195,13 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
     };
 
     startVideoRecording = async () => {
-        const { latestVideo, pictures } = this.state;
-        // Only allow one video
-        if (latestVideo || pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length > 0) return;
+        const { pictures, latestVideo } = this.state;
+        // Only allow one video in total
+        const videoCount = pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length + (latestVideo ? 1 : 0);
+        if (videoCount > 0) return;
+        // Only allow up to 5 total media assets
+        const totalCount = pictures.length + (latestVideo ? 1 : 0);
+        if (totalCount >= 5) return;
         if (this.camera && !this.state.isRecording && !this.state.takingPic) {
             const hasPermission = await this.requestCameraPermission();
             if (!hasPermission) {
@@ -242,7 +253,7 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                 const videoData = await recordingPromise;
                 console.log('Video recording completed:', videoData);
                 console.log('Video URI:', videoData.uri);
-                this.setState({ latestVideo: videoData.uri, camera: false, squib: true }); // Switch to squib entry page
+                this.setState({ latestVideo: videoData.uri });
 
             } catch (err: any) {
                 Alert.alert('Error', 'Failed to start recording: ' + (err?.message || err));
@@ -435,6 +446,9 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
         } = this.state;
         const Icon: any = FontAwesome;
         const videoTaken = pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length > 0 || latestVideo;
+        const videoCount = pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length;
+        const totalCount = pictures.length + (latestVideo ? 1 : 0);
+        const remaining = 5 - totalCount;
         return (
             <>
                 {squib &&
@@ -500,22 +514,30 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                                     onPress={this.handleMediaTap}
                                     onLongPress={this.showTextboxPanel}
                                 >
-                                    {this.state.latestVideo ? (
-                                        <Video
-                                            source={{ uri: this.state.latestVideo }}
-                                            style={{ width: '100%', height: '100%' }}
-                                            resizeMode="cover"
-                                            repeat
-                                            paused={false}
-                                            muted
-                                        />
-                                    ) : this.state.pictures.length > 0 ? (
-                                        <Image
-                                            source={{ uri: this.state.pictures[this.state.currentImage] }}
-                                            style={{ width: '100%', height: '100%' }}
-                                            resizeMode="cover"
-                                        />
-                                    ) : null}
+                                    {(() => {
+  const currentAsset = pictures[this.state.currentImage];
+  if (currentAsset && (currentAsset.endsWith('.mp4') || currentAsset.endsWith('.mov'))) {
+    return (
+      <Video
+        source={{ uri: currentAsset }}
+        style={{ width: '100%', height: '100%' }}
+        resizeMode="cover"
+        repeat
+        paused={false}
+        muted
+      />
+    );
+  } else if (currentAsset) {
+    return (
+      <Image
+        source={{ uri: currentAsset }}
+        style={{ width: '100%', height: '100%' }}
+        resizeMode="cover"
+      />
+    );
+  }
+  return null;
+})()}
                                     {this.state.pictures.length > 1 && (
                                         <View style={{ position: 'absolute', top: 72, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, zIndex: 10 }}>
                                             <Text style={{ color: 'white', fontSize: 14 }}>{this.state.currentImage + 1} / {this.state.pictures.length}</Text>
@@ -532,43 +554,44 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                                 )}
                                 {/* Animated Textbox Panel overlays on top of the media */}
                                 {this.state.showTextbox && (
-                                    <Animated.View
-                                        style={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            right: 0,
-                                            bottom: 0,
-                                            backgroundColor: 'rgba(255,255,255,0.95)',
-                                            padding: 20,
-                                            borderTopLeftRadius: 20,
-                                            borderTopRightRadius: 20,
-                                            transform: [{ translateY: this.state.textboxSlide.interpolate({ inputRange: [0, 1], outputRange: [300, 0] }) }],
-                                            zIndex: 999,
-                                            display: this.state.showTextbox ? 'flex' : 'none',
-                                        }}
+                                    <KeyboardAvoidingView
+                                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                                        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 999 }}
+                                        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
                                     >
-                                        <TextInput
-                                            multiline
-                                            placeholder="Write a post..."
-                                            placeholderTextColor="#333"
-                                            style={{ color: '#222', fontSize: 20, minHeight: 80 }}
-                                            onChangeText={text => this.setState({ caption: text })}
-                                            value={this.state.caption || ''}
-                                        />
-                                        <TouchableOpacity
-                                            onPress={async () => {
-                                                const loc = await this.getCurrentLocation();
-                                                Keyboard.dismiss();
-                                                this.setState({ isLoading: true });
-                                                await this.api.postNewSquib(this.state.pictures, this.state.caption, loc.lon, loc.lat);
-                                                this.setState({ isLoading: false });
-                                                this.props.close?.(true);
+                                        <Animated.View
+                                            style={{
+                                                backgroundColor: 'rgba(255,255,255,0.95)',
+                                                padding: 20,
+                                                borderTopLeftRadius: 20,
+                                                borderTopRightRadius: 20,
+                                                transform: [{ translateY: this.state.textboxSlide.interpolate({ inputRange: [0, 1], outputRange: [300, 0] }) }],
+                                                display: this.state.showTextbox ? 'flex' : 'none',
                                             }}
-                                            style={{ backgroundColor: '#44C1AF', borderRadius: 30, padding: 12, alignItems: 'center', marginTop: 20 }}
                                         >
-                                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>Post</Text>
-                                        </TouchableOpacity>
-                                    </Animated.View>
+                                            <TextInput
+                                                multiline
+                                                placeholder="Write a post..."
+                                                placeholderTextColor="#333"
+                                                style={{ color: '#222', fontSize: 20, minHeight: 80 }}
+                                                onChangeText={text => this.setState({ caption: text })}
+                                                value={this.state.caption || ''}
+                                            />
+                                            <TouchableOpacity
+                                                onPress={async () => {
+                                                    const loc = await this.getCurrentLocation();
+                                                    Keyboard.dismiss();
+                                                    this.setState({ isLoading: true });
+                                                    await this.api.postNewSquib(this.state.pictures, this.state.caption, loc.lon, loc.lat);
+                                                    this.setState({ isLoading: false });
+                                                    this.props.close?.(true);
+                                                }}
+                                                style={{ backgroundColor: '#44C1AF', borderRadius: 30, padding: 12, alignItems: 'center', marginTop: 20 }}
+                                            >
+                                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>Post</Text>
+                                            </TouchableOpacity>
+                                        </Animated.View>
+                                    </KeyboardAvoidingView>
                                 )}
                             </View>
                         
@@ -793,34 +816,15 @@ export default class CreateSquib extends Component<CreateSquibProps, CreateSquib
                             </TouchableOpacity>
                         </View>
                         <View style={styles.container}>
-                            <View style={{
-                                position: 'absolute',
-                                zIndex: 1000,
-                                left: '50%',
-                                top: '50%',
-                                marginTop: -100,
-                                marginLeft: -50,
-                                opacity: 0.5
-                            }}>
-                                <Text style={{
-                                    fontSize: 150,
-                                    color: 'white',
-                                    fontWeight: 'bold'
-                                }}>{count}</Text>
-                                <Text style={{
-                                    color: 'white',
-                                    fontWeight: 'bold',
-                                    marginLeft: -20
-                                }}>Pictures Remaining</Text>
-                                {count == 0 &&
-                                    <Text style={{
-                                        color: 'white',
-                                        fontWeight: 'bold',
-                                        marginLeft: -25,
-                                        marginTop: 10
-                                    }}>Proceed to Next Step</Text>
-                                }
-                            </View>
+                            {remaining > 0 && (
+                                <View style={{ position: 'absolute', zIndex: 1000, left: '50%', top: '50%', marginTop: -100, marginLeft: -50, opacity: 0.5 }}>
+                                    <Text style={{ fontSize: 150, color: 'white', fontWeight: 'bold' }}>{remaining}</Text>
+                                    <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: -20 }}>Media Remaining</Text>
+                                    {remaining === 0 && (
+                                        <Text style={{ color: 'white', fontWeight: 'bold', marginLeft: -25, marginTop: 10 }}>Proceed to Next Step</Text>
+                                    )}
+                                </View>
+                            )}
                                                          <RNCamera
                                  style={{ flex: 1, alignItems: 'center' }}
                                  ref={ref => {
