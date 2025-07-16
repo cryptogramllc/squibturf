@@ -125,6 +125,18 @@ export default class CreateSquib extends Component<
     }, 5000);
   }
 
+  componentDidUpdate(prevProps: any, prevState: any) {
+    // Animate text area when switching to squib mode
+    if (!prevState.squib && this.state.squib) {
+      // Start the animation when entering squib mode
+      Animated.timing(this.state.textboxSlide, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }
+
   _renderItem = ({ item }: { item: string; index: number }) => (
     <View style={styles.slide}>
       <Image
@@ -470,6 +482,22 @@ export default class CreateSquib extends Component<
     });
   };
 
+  deleteCurrentMedia = () => {
+    const { pictures, currentImage } = this.state;
+    if (pictures.length > 0) {
+      const newPictures = pictures.filter((_, index) => index !== currentImage);
+      const newCurrentImage =
+        newPictures.length > 0
+          ? Math.min(currentImage, newPictures.length - 1)
+          : 0;
+
+      this.setState({
+        pictures: newPictures,
+        currentImage: newCurrentImage,
+      });
+    }
+  };
+
   render() {
     const {
       backCam,
@@ -533,7 +561,12 @@ export default class CreateSquib extends Component<
                 />
               </TouchableOpacity>
             </View>
-            <View style={{ flex: 1, backgroundColor: 'black' }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: pictures.length > 0 ? 'black' : '#44C1AF',
+              }}
+            >
               <TouchableOpacity
                 style={{
                   flex: 1,
@@ -577,6 +610,7 @@ export default class CreateSquib extends Component<
                   }
                   return null;
                 })()}
+                {/* Media Counter */}
                 {this.state.pictures.length > 1 && (
                   <View
                     style={{
@@ -596,27 +630,78 @@ export default class CreateSquib extends Component<
                     </Text>
                   </View>
                 )}
+
+                {/* Delete Button */}
+                {this.state.pictures.length > 0 && (
+                  <TouchableOpacity
+                    onPress={this.deleteCurrentMedia}
+                    style={{
+                      position: 'absolute',
+                      top: 120,
+                      right: 16,
+                      zIndex: 10,
+                    }}
+                  >
+                    <Icon name="trash" color="#ff0000" size={24} />
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
-              {/* Add Text button at the bottom, always interactive if textbox is not open */}
-              {!this.state.showTextbox && (
-                <View
+              {/* Permanent Text Input Area */}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 999,
+                }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+              >
+                <Animated.View
                   style={{
-                    position: 'absolute',
-                    bottom: 40,
-                    left: 0,
-                    right: 0,
-                    alignItems: 'center',
-                    zIndex: 20,
+                    backgroundColor: 'rgba(255,255,255,0.95)',
+                    padding: 20,
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                    transform: [
+                      {
+                        translateY: this.state.textboxSlide.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [300, 0],
+                        }),
+                      },
+                    ],
                   }}
                 >
+                  <TextInput
+                    multiline
+                    placeholder="Write a post..."
+                    placeholderTextColor="#333"
+                    style={{ color: '#222', fontSize: 20, minHeight: 80 }}
+                    onChangeText={text => this.setState({ caption: text })}
+                    value={this.state.caption || ''}
+                  />
                   <TouchableOpacity
-                    onPress={this.showTextboxPanel}
+                    onPress={async () => {
+                      const loc = await this.getCurrentLocation();
+                      Keyboard.dismiss();
+                      this.setState({ isLoading: true });
+                      await this.api.postNewSquib(
+                        this.state.pictures,
+                        this.state.caption,
+                        loc.lon,
+                        loc.lat
+                      );
+                      this.setState({ isLoading: false });
+                      this.props.close?.(true);
+                    }}
                     style={{
                       backgroundColor: '#44C1AF',
-                      borderRadius: 20,
+                      borderRadius: 30,
                       padding: 12,
-                      minWidth: 120,
                       alignItems: 'center',
+                      marginTop: 20,
                     }}
                   >
                     <Text
@@ -626,84 +711,81 @@ export default class CreateSquib extends Component<
                         fontSize: 18,
                       }}
                     >
-                      Add Text
+                      Post
                     </Text>
                   </TouchableOpacity>
-                </View>
-              )}
-              {/* Animated Textbox Panel overlays on top of the media */}
-              {this.state.showTextbox && (
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                </Animated.View>
+              </KeyboardAvoidingView>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 999,
+                }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+              >
+                <Animated.View
                   style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 999,
+                    backgroundColor: 'rgba(255,255,255,0.95)',
+                    padding: 20,
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                    transform: [
+                      {
+                        translateY: this.state.textboxSlide.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [300, 0],
+                        }),
+                      },
+                    ],
+                    display: this.state.showTextbox ? 'flex' : 'none',
                   }}
-                  keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
                 >
-                  <Animated.View
+                  <TextInput
+                    multiline
+                    placeholder="Write a post..."
+                    placeholderTextColor="#333"
+                    style={{ color: '#222', fontSize: 20, minHeight: 80 }}
+                    onChangeText={text => this.setState({ caption: text })}
+                    value={this.state.caption || ''}
+                  />
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const loc = await this.getCurrentLocation();
+                      Keyboard.dismiss();
+                      this.setState({ isLoading: true });
+                      await this.api.postNewSquib(
+                        this.state.pictures,
+                        this.state.caption,
+                        loc.lon,
+                        loc.lat
+                      );
+                      this.setState({ isLoading: false });
+                      this.props.close?.(true);
+                    }}
                     style={{
-                      backgroundColor: 'rgba(255,255,255,0.95)',
-                      padding: 20,
-                      borderTopLeftRadius: 20,
-                      borderTopRightRadius: 20,
-                      transform: [
-                        {
-                          translateY: this.state.textboxSlide.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [300, 0],
-                          }),
-                        },
-                      ],
-                      display: this.state.showTextbox ? 'flex' : 'none',
+                      backgroundColor: '#44C1AF',
+                      borderRadius: 30,
+                      padding: 12,
+                      alignItems: 'center',
+                      marginTop: 20,
                     }}
                   >
-                    <TextInput
-                      multiline
-                      placeholder="Write a post..."
-                      placeholderTextColor="#333"
-                      style={{ color: '#222', fontSize: 20, minHeight: 80 }}
-                      onChangeText={text => this.setState({ caption: text })}
-                      value={this.state.caption || ''}
-                    />
-                    <TouchableOpacity
-                      onPress={async () => {
-                        const loc = await this.getCurrentLocation();
-                        Keyboard.dismiss();
-                        this.setState({ isLoading: true });
-                        await this.api.postNewSquib(
-                          this.state.pictures,
-                          this.state.caption,
-                          loc.lon,
-                          loc.lat
-                        );
-                        this.setState({ isLoading: false });
-                        this.props.close?.(true);
-                      }}
+                    <Text
                       style={{
-                        backgroundColor: '#44C1AF',
-                        borderRadius: 30,
-                        padding: 12,
-                        alignItems: 'center',
-                        marginTop: 20,
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: 18,
                       }}
                     >
-                      <Text
-                        style={{
-                          color: 'white',
-                          fontWeight: 'bold',
-                          fontSize: 18,
-                        }}
-                      >
-                        Post
-                      </Text>
-                    </TouchableOpacity>
-                  </Animated.View>
-                </KeyboardAvoidingView>
-              )}
+                      Post
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </KeyboardAvoidingView>
             </View>
           </View>
         )}
@@ -963,6 +1045,30 @@ export default class CreateSquib extends Component<
                   size={30}
                 />
               </TouchableOpacity>
+            </View>
+
+            {/* Helpful message for text-only squibs */}
+            <View
+              style={{
+                position: 'absolute',
+                top: 78,
+                right: 80,
+                zIndex: 999,
+              }}
+            >
+              <Text
+                style={{
+                  color: 'white',
+                  fontSize: 12,
+                  fontWeight: '500',
+                  opacity: 0.9,
+                  textAlign: 'right',
+                }}
+              >
+                {pictures.length > 0 || latestVideo
+                  ? '💡 Done? Next, add text'
+                  : '💡 Skip media, just add text'}
+              </Text>
             </View>
             {/* Top-left: Cancel X button */}
             <View
@@ -1308,9 +1414,7 @@ export default class CreateSquib extends Component<
                 }}
               >
                 {' '}
-                {processingType === 'video'
-                  ? 'Converting to GIF...'
-                  : 'Posting...'}{' '}
+                Posting...{' '}
               </Text>
             </View>
           </View>

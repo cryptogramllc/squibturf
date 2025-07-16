@@ -36,6 +36,7 @@ interface HomeProps {}
 interface HomeState {
   showCreateSquib: boolean;
   data?: {} | null;
+  refreshTrigger: number;
 }
 
 const Stack = createStackNavigator();
@@ -67,6 +68,7 @@ export class Home extends Component<HomeProps, HomeState> {
     super(props);
     this.state = {
       showCreateSquib: false,
+      refreshTrigger: 0,
     };
     this.api = new SquibApi();
   }
@@ -83,7 +85,9 @@ export class Home extends Component<HomeProps, HomeState> {
         >
           <Tab.Screen
             name="Turf"
-            component={NewsPage}
+            component={(props: any) => (
+              <NewsPage {...props} refreshTrigger={this.state.refreshTrigger} />
+            )}
             options={{
               tabBarIcon: ({ color }) => (
                 <Icon
@@ -156,6 +160,13 @@ export class Home extends Component<HomeProps, HomeState> {
               console.log('CreateSquib close called with:', value);
               this.setState({ showCreateSquib: !value });
               this.setState({ data: {} });
+              // Trigger refresh of NewsPage when squib is posted
+              if (value) {
+                console.log('Squib posted, triggering refresh');
+                this.setState(prevState => ({
+                  refreshTrigger: prevState.refreshTrigger + 1,
+                }));
+              }
             }}
           />
         </ModalItem>
