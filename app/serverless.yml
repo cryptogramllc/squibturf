@@ -31,7 +31,7 @@ functions:
     role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
     description: Submit candidate information and starts interview process.
     events:
-      - http: 
+      - http:
           path: contact
           method: post
   getBlogPost:
@@ -59,9 +59,9 @@ functions:
     environment:
       TABLE_NAME:
       OPENAI_URL:
-      OPENAI_API_KEY: 
-      UNSPLASH_ACCESS_KEY: 
-      S3_BUCKET: 
+      OPENAI_API_KEY:
+      UNSPLASH_ACCESS_KEY:
+      S3_BUCKET:
     events:
       - http:
           path: create-blog
@@ -72,9 +72,9 @@ functions:
     handler: index.writeBlogItemsToHtml
     role: arn:aws:iam::514188170070:role/aws-nodejs-prod-us-east-1-lambdaRole
     timeout: 900
-    environment: 
-       S3_BUCKET: ciphergram.io
-       TABLE_NAME: blog_posts
+    environment:
+      S3_BUCKET: ciphergram.io
+      TABLE_NAME: blog_posts
     events:
       - http:
           path: write-blog
