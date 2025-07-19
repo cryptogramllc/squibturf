@@ -14,6 +14,12 @@ function SquibAPI() {
     baseURL: 'https://ji58k1qfwl.execute-api.us-east-1.amazonaws.com/dev',
     timeout: 10000, // 10 second timeout
   });
+
+  // Separate API instance for profile endpoint
+  this.profileApi = axios.create({
+    baseURL: 'https://h38fikktw7.execute-api.us-east-1.amazonaws.com/prod',
+    timeout: 10000, // 10 second timeout
+  });
   const accessKey = Config.ACCESS_KEY;
   const secretKey = Config.SECRET_KEY;
   // Debug logging to check if Config values are loaded
@@ -362,7 +368,7 @@ SquibAPI.prototype.sendProfile = async function (data) {
     }
 
     // Send the updated data to the backend
-    const response = await this.api.post('/profile', data, {
+    const response = await this.profileApi.post('/profile', data, {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -378,7 +384,7 @@ SquibAPI.prototype.sendProfile = async function (data) {
 SquibAPI.prototype.getProfile = async function (uuid) {
   let response;
   try {
-    response = await this.api.get(`/profile/${uuid}`, {
+    response = await this.profileApi.get(`/profile/${uuid}`, {
       headers: {
         'Content-Type': 'application/json',
       },

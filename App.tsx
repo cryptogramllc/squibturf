@@ -7,6 +7,7 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 
+import { clearAllProfileCache } from './src/components/NewsItem';
 import ModalItem from './src/modals/ModalItem';
 import Comments from './src/pages/Comments';
 import CreateSquib from './src/pages/CreateSquib';
@@ -248,13 +249,14 @@ export default class App extends Component<AppProps, AppState> {
               }}
               listeners={{
                 focus: async () => {
+                  // Always refresh user data from AsyncStorage when News screen is focused
+                  const user = await AsyncStorage.getItem('userInfo');
+                  if (user) {
+                    const pdata = JSON.parse(user);
+                    this.setState({ pdata, user_uuid: pdata.uuid });
+                  }
+
                   if (this.state.showProfileAfterEdit) {
-                    // Refresh user data from AsyncStorage before showing profile
-                    const user = await AsyncStorage.getItem('userInfo');
-                    if (user) {
-                      const pdata = JSON.parse(user);
-                      this.setState({ pdata });
-                    }
                     this.setState({
                       showProfile: true,
                       showProfileAfterEdit: false,
@@ -294,6 +296,8 @@ export default class App extends Component<AppProps, AppState> {
           <Profile
             navigation={this.navigationRef.current}
             userSessionReset={async () => {
+              // Clear all profile caches when user signs out
+              clearAllProfileCache();
               this.setState({ user_uuid: null });
               AsyncStorage.removeItem('userInfo');
               await this.navigationRef.current?.navigate('Login');

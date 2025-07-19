@@ -12,6 +12,25 @@ import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Video from 'react-native-video';
 const SquibApi = require('../api');
 
+// Global cache for profile photos to avoid duplicate API calls
+const profilePhotoCache = new Map<
+  string,
+  { photo: string | null; timestamp: number }
+>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache duration
+
+// Utility function to clear cache for a specific user (useful when profile is updated)
+export const clearUserProfileCache = (userId: string) => {
+  profilePhotoCache.delete(userId);
+  console.log('Cleared profile cache for user:', userId);
+};
+
+// Utility function to clear entire cache
+export const clearAllProfileCache = () => {
+  profilePhotoCache.clear();
+  console.log('Cleared all profile cache');
+};
+
 interface NewsItemProps {
   img?: string[]; // Optional array of image URIs
   video?: string[]; // Optional array of video URIs
@@ -56,25 +75,97 @@ const NewsItem: React.FC<NewsItemProps> = ({
   const totalMedia = (img?.length || 0) + (video?.length || 0);
   const mediaFlexBasis = totalMedia > 0 ? 100 / totalMedia : 100;
 
-  // Fetch user profile picture if userId is provided and no userPhoto
+  // Fetch user profile picture for all users with caching
   useEffect(() => {
     const fetchProfilePicture = async () => {
-      if (userId && !userPhoto) {
+      console.log(
+        '🖼️ NewsItem: Starting profile photo fetch for user:',
+        userId,
+        'name:',
+        name
+      );
+
+      if (userId) {
+        // Check cache first
+        const cached = profilePhotoCache.get(userId);
+        const now = Date.now();
+
+        if (cached && now - cached.timestamp < CACHE_DURATION) {
+          // Use cached data if it's still valid
+          console.log(
+            '🖼️ NewsItem: Using cached profile photo for user:',
+            userId,
+            'photo:',
+            cached.photo
+          );
+          setProfilePhoto(cached.photo);
+          return;
+        }
+
         try {
+          console.log(
+            '🖼️ NewsItem: Fetching profile from API for user:',
+            userId
+          );
           const api = new SquibApi();
           const response = await api.getProfile(userId);
-          console.log('response', response);
+          console.log(
+            '🖼️ NewsItem: API response for user',
+            userId,
+            ':',
+            response
+          );
+
+          let photoUrl = null;
           if (response && response.data && response.data.photo) {
-            setProfilePhoto(response.data.photo);
+            photoUrl = response.data.photo;
+            console.log(
+              '🖼️ NewsItem: Setting profile photo for user:',
+              userId,
+              'photo:',
+              photoUrl
+            );
+            setProfilePhoto(photoUrl);
+          } else {
+            console.log(
+              '🖼️ NewsItem: No photo found in API response for user:',
+              userId
+            );
           }
+
+          // Cache the result (even if null, to avoid repeated failed calls)
+          profilePhotoCache.set(userId, {
+            photo: photoUrl,
+            timestamp: now,
+          });
+
+          console.log(
+            '🖼️ NewsItem: Cached profile photo for user:',
+            userId,
+            'photo:',
+            photoUrl
+          );
         } catch (error) {
-          console.log('Error fetching profile picture:', error);
+          console.error(
+            '🖼️ NewsItem: Error fetching profile picture for user',
+            userId,
+            ':',
+            error
+          );
+
+          // Cache null result to avoid repeated failed calls
+          profilePhotoCache.set(userId, {
+            photo: null,
+            timestamp: now,
+          });
         }
+      } else {
+        console.log('🖼️ NewsItem: No userId provided for user:', name);
       }
     };
 
     fetchProfilePicture();
-  }, [userId, userPhoto]);
+  }, [userId, name]);
 
   return (
     <TouchableOpacity onPress={onPress} style={styles.newsItem}>
@@ -84,8 +175,58 @@ const NewsItem: React.FC<NewsItemProps> = ({
           <View style={styles.userInfoLeft}>
             {profilePhoto ? (
               <Image
-                source={{ uri: profilePhoto }}
+                source={{
+                  uri: (() => {
+                    const photoUrl =
+                      profilePhoto &&
+                      profilePhoto.includes('squibturf-images.s3.amazonaws.com')
+                        ? profilePhoto.replace(
+                            'squibturf-images.s3.amazonaws.com',
+                            'squibturf-images.s3.us-east-1.amazonaws.com'
+                          )
+                        : profilePhoto;
+                    // Ensure the URL has the correct format with double slash
+                    const finalPhotoUrl =
+                      photoUrl &&
+                      photoUrl.includes(
+                        'squibturf-images.s3.us-east-1.amazonaws.com'
+                      ) &&
+                      !photoUrl.includes('//profile-')
+                        ? photoUrl.replace(
+                            'squibturf-images.s3.us-east-1.amazonaws.com/',
+                            'squibturf-images.s3.us-east-1.amazonaws.com//'
+                          )
+                        : photoUrl;
+                    console.log(
+                      '🖼️ NewsItem: Loading profile photo URL:',
+                      finalPhotoUrl
+                    );
+                    return finalPhotoUrl;
+                  })(),
+                }}
                 style={styles.userProfilePic}
+                onLoadStart={() => {
+                  console.log(
+                    '🖼️ NewsItem: Profile photo load started for user:',
+                    name
+                  );
+                }}
+                onLoad={() => {
+                  console.log(
+                    '🖼️ NewsItem: Profile photo loaded successfully for user:',
+                    name
+                  );
+                }}
+                onError={error => {
+                  console.error(
+                    '🖼️ NewsItem: Profile photo failed to load for user:',
+                    name,
+                    'error:',
+                    error.nativeEvent
+                  );
+                  // Fallback to teal circle if image fails to load
+                  setProfilePhoto(null);
+                }}
               />
             ) : (
               <View style={styles.userProfilePicPlaceholder}>
@@ -336,23 +477,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userProfilePic: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    marginRight: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginRight: 12,
   },
   userProfilePicPlaceholder: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#44C1AF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
+    marginRight: 12,
   },
   userProfilePicText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   userInfoText: {

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
+import { clearUserProfileCache } from '../components/NewsItem';
 const SquibApi = require('../api');
 
 interface Props {
@@ -201,6 +202,11 @@ export default class ProfileEdit extends Component<Props, State> {
 
       // Only save to AsyncStorage after successful API call
       await AsyncStorage.setItem('userInfo', JSON.stringify(updatedUserData));
+
+      // Clear the profile cache for this user so NewsItem components will fetch fresh data
+      if (userData.uuid) {
+        clearUserProfileCache(userData.uuid);
+      }
 
       Alert.alert('Success', 'Profile updated successfully!', [
         {

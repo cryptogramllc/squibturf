@@ -9,6 +9,7 @@ import React, { Component } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import UUID from 'react-native-uuid';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
+import { clearAllProfileCache } from '../components/NewsItem';
 const SquibApi = require('../api'); // Using require since it's a CommonJS module
 
 interface UserData {
@@ -129,13 +130,28 @@ export default class Login extends Component<
 
   _signIn = async () => {
     try {
+      console.log('🔐 LOGIN: Starting Google Sign-In process');
+
+      // Force sign out first to clear any cached user data
+      await GoogleSignin.signOut();
+      console.log('🔐 LOGIN: Signed out from Google');
+
       await GoogleSignin.hasPlayServices();
       const userInfo: any = await GoogleSignin.signIn();
 
+      console.log('🔐 LOGIN: Google Sign-In response:', userInfo);
+      console.log('🔐 LOGIN: Google user data:', userInfo.data.user);
+
       const info: any = userInfo.data.user;
       const userData = { ...info, ...{ uuid: UUID.v4() } };
+
+      console.log(
+        '🔐 LOGIN: Processed user data before sending to API:',
+        userData
+      );
       this._sendData(userData);
     } catch (err: any) {
+      console.error('🔐 LOGIN: Google Sign-In Error:', err);
       Alert.alert('Google Sign-In Error');
       if (err.code === statusCodes.SIGN_IN_CANCELLED) {
         // user cancelled the login flow
@@ -155,26 +171,30 @@ export default class Login extends Component<
         throw new Error('No email associated with login');
       }
       const { navigation } = this.props;
+
+      console.log('🔐 LOGIN: Starting login process for email:', info.email);
+
+      // Clear all caches when a new user logs in
+      clearAllProfileCache();
+
+      // Clear ALL AsyncStorage data to ensure clean state
+      await AsyncStorage.clear();
+      console.log('🔐 LOGIN: Cleared all AsyncStorage data');
+
       const response = await this.api.sendProfile(info);
+      console.log('🔐 LOGIN: API response:', response?.data);
+
       if (response) {
-        // Check if we have existing user data that might have additional fields
-        const existingUserData = await AsyncStorage.getItem('userInfo');
-        let finalUserData = response.data;
-
-        if (existingUserData) {
-          const existingData = JSON.parse(existingUserData);
-
-          // Merge API response with existing data, preserving fields that might not be in API response
-          finalUserData = {
-            ...response.data,
-            bio: response.data.bio || existingData.bio,
-            displayName: response.data.displayName || existingData.displayName,
-            profileCompleted:
-              response.data.profileCompleted || existingData.profileCompleted,
-          };
-        }
+        // Use only the fresh data from the API response, don't merge with existing data
+        const finalUserData = response.data;
+        console.log('🔐 LOGIN: Final user data to be stored:', finalUserData);
 
         await AsyncStorage.setItem('userInfo', JSON.stringify(finalUserData));
+        console.log('🔐 LOGIN: Stored user data in AsyncStorage');
+
+        // Verify what was stored
+        const storedUser = await AsyncStorage.getItem('userInfo');
+        console.log('🔐 LOGIN: Verified stored user data:', storedUser);
 
         // Check if user needs profile completion based on backend response
         const needsProfileCompletion = finalUserData.needsProfileCompletion;
@@ -187,8 +207,10 @@ export default class Login extends Component<
           navigation?.navigate('News');
         }
       } else {
+        console.log('🔐 LOGIN: No response from API');
       }
     } catch (err) {
+      console.error('🔐 LOGIN: Error during login:', err);
       Alert.alert('Login Error', 'Failed to complete login. Please try again.');
     }
   };

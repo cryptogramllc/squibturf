@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { Component } from 'react';
 import {
   Dimensions,
@@ -76,11 +77,17 @@ export default class Profile extends Component<Props, State> {
   }
 
   async componentDidMount() {
+    // Force clear any cached state first
+    this.setState({ userData: null });
+
     await this.loadUserData();
 
     // Add focus listener to refresh data when screen is focused
     const unsubscribe = this.props.navigation?.addListener('focus', () => {
-      this.loadUserData();
+      // Force clear state and reload data on focus
+      this.setState({ userData: null }, () => {
+        this.loadUserData();
+      });
     });
 
     // Clean up listener on unmount
@@ -97,20 +104,57 @@ export default class Profile extends Component<Props, State> {
   }
 
   loadUserData = async () => {
+    // Always get fresh user data from AsyncStorage first
     let userData = this.props.data;
-    console.log('🚀 ~ Profile ~ loadUserData= ~ userData:', userData);
+    console.log('👤 PROFILE: userData from props:', userData);
+
+    try {
+      // Get fresh data from AsyncStorage
+      const user = await AsyncStorage.getItem('userInfo');
+      console.log('👤 PROFILE: Raw AsyncStorage data:', user);
+
+      if (user) {
+        const freshUserData = JSON.parse(user);
+        console.log('👤 PROFILE: Parsed AsyncStorage data:', freshUserData);
+
+        // Use fresh data from AsyncStorage, fallback to props data
+        userData = freshUserData || userData;
+        console.log(
+          '👤 PROFILE: Final userData after AsyncStorage merge:',
+          userData
+        );
+      } else {
+        console.log('👤 PROFILE: No data found in AsyncStorage');
+      }
+    } catch (error) {
+      console.log('👤 PROFILE: Error reading AsyncStorage:', error);
+    }
 
     if (!userData) {
-      // If no data passed as props, try to fetch from API using stored UUID
-      // This would need to be passed from parent component or stored elsewhere
-      console.log('Profile - no data provided, cannot load user data');
+      console.log('👤 PROFILE: No data provided, cannot load user data');
       return;
     }
 
-    // If we have user data with a UUID, fetch fresh profile data from API
+    // Skip API call if we have valid data from AsyncStorage
+    // The API is returning wrong data for new users, so we'll use AsyncStorage data
+    if (userData && userData.email && userData.uuid) {
+      console.log(
+        '👤 PROFILE: Using AsyncStorage data, skipping API call to avoid wrong data'
+      );
+      console.log('👤 PROFILE: Final userData (from AsyncStorage):', userData);
+      this.setState({ userData: userData ?? null });
+      return;
+    }
+
+    // Only call API if we don't have complete data from AsyncStorage
     if (userData && userData.uuid) {
       try {
+        console.log(
+          '👤 PROFILE: Fetching profile data from API for UUID:',
+          userData.uuid
+        );
         const response = await this.api.getProfile(userData.uuid);
+        console.log('👤 PROFILE: API response:', response?.data);
 
         if (response && response.data) {
           // Use fresh data from API, merging with existing data
@@ -118,12 +162,14 @@ export default class Profile extends Component<Props, State> {
             ...userData,
             ...response.data,
           };
+          console.log('👤 PROFILE: Final userData after API merge:', userData);
         }
       } catch (error) {
-        console.log('Profile - error fetching profile data:', error);
+        console.log('👤 PROFILE: Error fetching profile data:', error);
       }
     }
 
+    console.log('👤 PROFILE: Setting state with userData:', userData);
     this.setState({ userData: userData ?? null });
   };
 
@@ -170,8 +216,23 @@ export default class Profile extends Component<Props, State> {
                 top: 60,
                 right: 20,
                 zIndex: 999,
+                flexDirection: 'row',
               }}
             >
+              <TouchableOpacity
+                onPress={() => {
+                  // Force refresh user data
+                  this.setState({ userData: null }, () => {
+                    this.loadUserData();
+                  });
+                }}
+                style={{
+                  padding: 8,
+                  marginRight: 8,
+                }}
+              >
+                <Icon name="refresh" size={20} color="#44C1AF" />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   // Use the callback to handle navigation
