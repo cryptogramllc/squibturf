@@ -69,64 +69,100 @@ const isProfileComplete = userData => {
 };
 
 exports.handler = async event => {
-
   try {
-    const { email } = event;
-    if (!email) {
-      throw new Error('Email is required');
-    }
+    // Handle GET requests (fetch profile by UUID)
+    if (event.httpMethod === 'GET') {
+      const { uuid } = event.pathParameters || {};
 
-    const params = {
-      TableName: 'users',
-      Key: { email: email.toLowerCase() },
-    };
-
-    // Check if user already exists
-    const response = await dynamoDb.get(params).promise();
-    const existingUser = response.Item;
-
-    if (!existingUser) {
-      // New user - create and check if profile completion is needed
-      await storeUser(event);
-
-      const needsProfileCompletion = !isProfileComplete(event);
-      const userData = {
-        ...event,
-        needsProfileCompletion,
-      };
-
-        'New user created, needs profile completion:',
-        needsProfileCompletion
-      );
-      return userData;
-    } else {
-      // Existing user - check if profile completion is needed
-
-      const needsProfileCompletion = !isProfileComplete(existingUser);
-
-      // If this is a profile update (has profileCompleted flag), update the user
-      if (event.profileCompleted) {
-        const updateResult = await updateUser(event);
-        const updatedUser = JSON.parse(updateResult.body);
-
+      if (!uuid) {
         return {
-          ...updatedUser,
-          needsProfileCompletion: false, // Profile is now complete
+          statusCode: 400,
+          body: JSON.stringify({ message: 'UUID is required' }),
         };
       }
 
-      // Return existing user with profile completion status
-      const userData = {
-        ...existingUser,
-        needsProfileCompletion,
+      const params = {
+        TableName: 'users',
+        Key: { uuid: uuid },
       };
 
-        'Returning existing user, needs profile completion:',
-        needsProfileCompletion
-      );
-      return userData;
+      const response = await dynamoDb.get(params).promise();
+      const user = response.Item;
+
+      if (!user) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ message: 'User not found' }),
+        };
+      }
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify(user),
+      };
     }
+
+    // Handle POST requests (create/update user)
+    if (event.httpMethod === 'POST') {
+      const { email } = event;
+      if (!email) {
+        throw new Error('Email is required');
+      }
+
+      const params = {
+        TableName: 'users',
+        Key: { email: email.toLowerCase() },
+      };
+
+      // Check if user already exists
+      const response = await dynamoDb.get(params).promise();
+      const existingUser = response.Item;
+
+      if (!existingUser) {
+        // New user - create and check if profile completion is needed
+        await storeUser(event);
+
+        const needsProfileCompletion = !isProfileComplete(event);
+        const userData = {
+          ...event,
+          needsProfileCompletion,
+        };
+        return userData;
+      } else {
+        // Existing user - check if profile completion is needed
+
+        const needsProfileCompletion = !isProfileComplete(existingUser);
+
+        // If this is a profile update (has profileCompleted flag), update the user
+        if (event.profileCompleted) {
+          const updateResult = await updateUser(event);
+          const updatedUser = JSON.parse(updateResult.body);
+
+          return {
+            ...updatedUser,
+            needsProfileCompletion: false, // Profile is now complete
+          };
+        }
+
+        // Return existing user with profile completion status
+        const userData = {
+          ...existingUser,
+          needsProfileCompletion,
+        };
+
+        return userData;
+      }
+    }
+
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ message: 'Method not allowed' }),
+    };
   } catch (err) {
-    throw err;
+    console.error('Lambda error:', err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: 'Internal server error' }),
+    };
   }
 };

@@ -673,9 +673,9 @@ export default class CreateSquib extends Component<
                     onPress={this.deleteCurrentMedia}
                     style={{
                       position: 'absolute',
-                      bottom: 200,
+                      bottom: 250,
                       left: '50%',
-                      marginLeft: -40,
+                      marginLeft: -70,
                       zIndex: 10,
                       backgroundColor: 'rgba(255, 0, 0, 0.8)',
                       paddingHorizontal: 16,
@@ -690,7 +690,7 @@ export default class CreateSquib extends Component<
                         fontSize: 16,
                       }}
                     >
-                      Delete
+                      Delete Media
                     </Text>
                   </TouchableOpacity>
                 )}

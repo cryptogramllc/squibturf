@@ -1,290 +1,168 @@
-const AWS = require("aws-sdk");
-const docClient = new AWS.DynamoDB.DocumentClient();
-const { extractTitleAndFormatText, dateStamp, formattedDate } = require("./helpers");
-const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
-const s3 = new AWS.S3();
+const AWS = require('aws-sdk');
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
 
-exports.email = async function (event, context) {
-    const {
-        name,
-        email,
-        message
-    } = event;
-    // Set region
-    AWS.config.update({ region: 'us-east-1' });
-    // Create publish parameters
-    var params = {
-        Message: `New Message from ${name} <${email}>: 
-            "${message}"`, /* required */
-        TopicArn: 'arn:aws:sns:us-east-1:514188170070:Contact-Us'
+const storeUser = async userData => {
+  const params = {
+    TableName: 'users',
+    Item: userData,
+  };
+  try {
+    await dynamoDb.put(params).promise();
+    return {
+      statusCode: 200,
+      body: JSON.stringify('Successfully processed login'),
     };
-    const response = await new AWS.SNS({ apiVersion: '2010-03-31' }).publish(params).promise();
-    if (!response.error) {
-        return {
-            statusCode: 200,
-            body: { status: 'OK', messageId: response.MessageId },
-        }
-    }
-
+  } catch (err) {
+    throw err;
+  }
 };
 
-exports.getBlogPost = async (event) => {
-    const uuid = event.pathParameters.uuid;
+const updateUser = async userData => {
+  // Build update expression dynamically based on provided fields
+  const updateFields = [];
+  const expressionAttributeNames = {};
+  const expressionAttributeValues = {};
 
-    const params = {
-        TableName: process.env.TABLE_NAME,
-        Key: { uuid },
+  // Fields that can be updated
+  const updatableFields = [
+    'familyName',
+    'givenName',
+    'displayName',
+    'bio',
+    'name',
+    'photo',
+    'profileCompleted',
+  ];
+
+  updatableFields.forEach(field => {
+    if (userData[field] !== undefined) {
+      updateFields.push(`#${field} = :${field}`);
+      expressionAttributeNames[`#${field}`] = field;
+      expressionAttributeValues[`:${field}`] = userData[field];
+    }
+  });
+
+  if (updateFields.length === 0) {
+    return { statusCode: 200, body: JSON.stringify('No fields to update') };
+  }
+
+  const params = {
+    TableName: 'users',
+    Key: { email: userData.email.toLowerCase() },
+    UpdateExpression: `SET ${updateFields.join(', ')}`,
+    ExpressionAttributeNames: expressionAttributeNames,
+    ExpressionAttributeValues: expressionAttributeValues,
+    ReturnValues: 'ALL_NEW',
+  };
+
+  try {
+    const result = await dynamoDb.update(params).promise();
+    return { statusCode: 200, body: JSON.stringify(result.Attributes) };
+  } catch (err) {
+    throw err;
+  }
+};
+
+const isProfileComplete = userData => {
+  // Check if user has the minimum required profile information
+  return userData.familyName && userData.givenName && userData.displayName;
+};
+
+exports.handler = async event => {
+  try {
+    // Handle GET requests (fetch profile by UUID)
+    if (event.httpMethod === 'GET') {
+      const { uuid } = event.pathParameters || {};
+
+      if (!uuid) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ message: 'UUID is required' }),
+        };
+      }
+
+      const params = {
+        TableName: 'users',
+        Key: { uuid: uuid },
+      };
+
+      const response = await dynamoDb.get(params).promise();
+      const user = response.Item;
+
+      if (!user) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ message: 'User not found' }),
+        };
+      }
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify(user),
+      };
+    }
+
+    // Handle POST requests (create/update user)
+    if (event.httpMethod === 'POST') {
+      const { email } = event;
+      if (!email) {
+        throw new Error('Email is required');
+      }
+
+      const params = {
+        TableName: 'users',
+        Key: { email: email.toLowerCase() },
+      };
+
+      // Check if user already exists
+      const response = await dynamoDb.get(params).promise();
+      const existingUser = response.Item;
+
+      if (!existingUser) {
+        // New user - create and check if profile completion is needed
+        await storeUser(event);
+
+        const needsProfileCompletion = !isProfileComplete(event);
+        const userData = {
+          ...event,
+          needsProfileCompletion,
+        };
+        return userData;
+      } else {
+        // Existing user - check if profile completion is needed
+
+        const needsProfileCompletion = !isProfileComplete(existingUser);
+
+        // If this is a profile update (has profileCompleted flag), update the user
+        if (event.profileCompleted) {
+          const updateResult = await updateUser(event);
+          const updatedUser = JSON.parse(updateResult.body);
+
+          return {
+            ...updatedUser,
+            needsProfileCompletion: false, // Profile is now complete
+          };
+        }
+
+        // Return existing user with profile completion status
+        const userData = {
+          ...existingUser,
+          needsProfileCompletion,
+        };
+
+        return userData;
+      }
+    }
+
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ message: 'Method not allowed' }),
     };
-
-    try {
-        const data = await docClient.get(params).promise();
-
-        if (!data.Item) {
-            return {
-                statusCode: 404,
-                body: JSON.stringify({ error: 'Item not found' }),
-            };
-        }
-
-        const formattedItem = {
-            ...data.Item,
-            date: await formattedDate(data.Item.date), // Assuming 'date' is the attribute to be formatted
-        };
-
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify(formattedItem),
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    } catch (err) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Internal server error' }),
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    }
+  } catch (err) {
+    console.error('Lambda error:', err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: 'Internal server error' }),
+    };
+  }
 };
-
-exports.getBlogList = async (event) => {
-
-    try {
-        const params = {
-            TableName: process.env.TABLE_NAME, // Replace with your DynamoDB table name
-        };
-        const data = await docClient.scan(params).promise();
-        const sortItemsAsync = async (items) => {
-            return items.sort((a, b) => {
-                return parseInt(b.date) - parseInt(a.date);
-            });
-        };
-
-        // Usage:
-        const sortedItems = await sortItemsAsync(data.Items);
-        // Sort and map the items asynchronously
-        const sortedAndMappedData = await Promise.all(
-            sortedItems.map(async (item) => {
-                const timestamp = item.date;
-                const date = await formattedDate(item.date);
-                return {
-                    ...item,
-                    date,
-                    timestamp,
-                };
-            })
-        );
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify(sortedAndMappedData),
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    } catch (error) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error, msg: 'Could not retrieve data from DynamoDB' }),
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    }
-};
-
-exports.createBlogItem = async (event) => {
-    async function fetchImagesBySubject(subject) {
-        try {
-            const accessKey = process.env.UNSPLASH_ACCESS_KEY;
-            const apiUrl = `https://api.unsplash.com/search/photos?query=${subject}&per_page=1&client_id=${accessKey}`;
-            const response = await axios.get(apiUrl);
-            const data = response.data;
-
-            // Use Promise.all to map image URLs asynchronously
-            const imageUrls = await Promise.all(
-                data.results.map(async (image) => image.urls.regular)
-            );
-            return imageUrls;
-        } catch (error) {
-            console.error(error);
-            return [];
-        }
-    }
-
-
-    try {
-        if (event.httpMethod !== 'POST') {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ message: 'Invalid HTTP method. Expected POST.' }),
-                headers: {
-                    'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-                },
-            };
-        }
-        const requestBody = JSON.parse(event.body);
-        if (!requestBody.prompt) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ message: 'Missing "prompt" field in JSON data.' }),
-                headers: {
-                    'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-                },
-            };
-        }
-
-        const { prompt, subject, title } = requestBody;
-        // const topics = formatArrayToString(items);
-
-        // Replace with your ChatGPT API endpoint
-        const url = process.env.OPENAI_URL;
-        const openaiApiKey = process.env.OPENAI_API_KEY;
-
-        // Define your request headers
-        const headers = {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-        };
-        const data = JSON.stringify({ "model": "gpt-3.5-turbo", "messages": [{ "role": "user", "content": prompt }], "temperature": 1.0 });
-
-        const response = await axios.post(url, data, { headers });
-
-        if (response.status === 200) {
-            const blogContent = response.data.choices[0].message.content;
-            const item = extractTitleAndFormatText(blogContent);
-            item.title = title ? title : item.title;
-            item.uuid = uuidv4();
-            item.date = dateStamp();
-            const imageArray = await fetchImagesBySubject(subject);
-            // Store the blog content in DynamoDB
-            item.image = imageArray[0]
-            const params = {
-                TableName: process.env.TABLE_NAME,
-                Item: item,
-            };
-
-            await docClient.put(params).promise();
-
-
-            return {
-                statusCode: 200,
-                body: 'Blog post generated and stored in DynamoDB',
-                headers: {
-                    'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-                },
-            };
-        } else {
-            return {
-                statusCode: response.status,
-                body: 'Error: Failed to generate blog post',
-                headers: {
-                    'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-                },
-            };
-        }
-    } catch (error) {
-        console.error('Error:', error);
-
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ message: 'Internal server error.', error }),
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    }
-}
-
-exports.writeBlogItemsToHtml = async (event) => {
-    const tableName = process.env.TABLE_NAME;
-    const s3Bucket = process.env.S3_BUCKET;
-    const templateHtmlKey = 'blog/template.html'; // e.g., 'template.html'
-    try {
-        // Read the HTML template from S3
-        const templateData = await s3.getObject({ Bucket: s3Bucket, Key: templateHtmlKey }).promise();
-        const templateHtml = templateData.Body.toString('utf-8');
-
-        // Query DynamoDB for entries
-        const params = { TableName: tableName };
-        const dynamoResponse = await docClient.scan(params).promise();
-        for (const item of dynamoResponse.Items) {
-            const timestamp = typeof item.date === 'string' ? parseInt(item.date) : item.date;
-            const date = new Date(timestamp);
-            const year = date.getFullYear();
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const day = date.getDate().toString().padStart(2, '0');
-            // Create HTML content by replacing placeholders in the template
-            const htmlContent = templateHtml
-                .replace('{{ title }}', item.title)
-                .replace('{{ date }}', `${month} • ${day} • ${year}`)
-                .replace('{{ content }}', item.content)
-                .replace('{{ image }}', `<image class="blog-image" src="${item.image ? item.image : 'https://unsplash.com/photos/black-and-silver-laptop-computer-on-table-95YRwf6CNw8'}" />`);
-
-            // Set the S3 object key based on the date timestamp
-            const titleInDash = item.title.toLowerCase().replace(/\s/g, '-').replace(/-$/, '');
-            const s3Key = `article/${year}/${month}/${day}/${titleInDash}/index.html`;
-            const link = s3Key.replace('/index.html', '/');
-            // Update the DynamoDB item with the s3Key
-            const updateParams = {
-                TableName: tableName,
-                Key: { uuid: item.uuid },
-                UpdateExpression: 'SET link = :link',
-                ExpressionAttributeValues: {
-                    ':link': link,
-                },
-            };
-
-            await docClient.update(updateParams).promise();
-
-            const s3Params = {
-                Bucket: s3Bucket,
-                Key: s3Key,
-                Body: htmlContent,
-                ContentType: 'text/html',
-            };
-            await s3.upload(s3Params).promise();
-        }
-
-        return {
-            statusCode: 200,
-            body: 'HTML files generated and uploaded to S3 successfully!',
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    } catch (error) {
-        console.error('Error:', error);
-        return {
-            statusCode: 500,
-            body: 'Error generating HTML and uploading to S3',
-            headers: {
-                'Access-Control-Allow-Origin': '*', // Allow requests from any origin
-            },
-        };
-    }
-}

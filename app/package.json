@@ -1,7 +1,6 @@
 {
   "name": "eamil-sender",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -18,5 +17,8 @@
     "nodemailer": "^6.4.4",
     "openai": "^4.11.1",
     "uuid": "^9.0.1"
-  }
+  },
+  "devDependencies": {},
+  "keywords": [],
+  "description": ""
 }

@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { Component } from 'react';
 import {
   Dimensions,
@@ -99,43 +98,32 @@ export default class Profile extends Component<Props, State> {
 
   loadUserData = async () => {
     let userData = this.props.data;
+    console.log('🚀 ~ Profile ~ loadUserData= ~ userData:', userData);
 
     if (!userData) {
-      // Try to get user data from AsyncStorage first
-      const user = await AsyncStorage.getItem('userInfo');
-      userData = user ? JSON.parse(user) : null;
+      // If no data passed as props, try to fetch from API using stored UUID
+      // This would need to be passed from parent component or stored elsewhere
+      console.log('Profile - no data provided, cannot load user data');
+      return;
+    }
 
-      // If we have user data with a UUID, fetch fresh profile data from API
-      if (userData && userData.uuid) {
-        try {
-          const response = await this.api.getProfile(userData.uuid);
+    // If we have user data with a UUID, fetch fresh profile data from API
+    if (userData && userData.uuid) {
+      try {
+        const response = await this.api.getProfile(userData.uuid);
 
-          if (response && response.data) {
-            // Check if API response has photo field
-            if (response.data.photo && userData) {
-              userData = {
-                ...userData,
-                ...response.data,
-              };
-            } else if (userData) {
-              // Only merge other fields, keep local photo
-              const { photo, ...apiDataWithoutPhoto } = response.data;
-              userData = {
-                ...userData,
-                ...apiDataWithoutPhoto,
-              };
-            }
-
-            // Save the fresh data to AsyncStorage
-            await AsyncStorage.setItem('userInfo', JSON.stringify(userData));
-          } else {
-          }
-        } catch (error) {
-          console.log('Profile - error fetching profile data:', error);
-          console.log('Profile - using cached data instead');
+        if (response && response.data) {
+          // Use fresh data from API, merging with existing data
+          userData = {
+            ...userData,
+            ...response.data,
+          };
         }
+      } catch (error) {
+        console.log('Profile - error fetching profile data:', error);
       }
     }
+
     this.setState({ userData: userData ?? null });
   };
 
@@ -144,7 +132,6 @@ export default class Profile extends Component<Props, State> {
   };
 
   refreshProfile = async () => {
-    await AsyncStorage.removeItem('userInfo');
     await this.loadUserData();
   };
 
@@ -187,12 +174,6 @@ export default class Profile extends Component<Props, State> {
             >
               <TouchableOpacity
                 onPress={() => {
-                  console.log('Profile - Edit Profile button pressed');
-                  console.log(
-                    'Profile - userData to pass:',
-                    this.state.userData
-                  );
-
                   // Use the callback to handle navigation
                   if (this.props.onEditProfile) {
                     this.props.onEditProfile(this.state.userData);
@@ -421,7 +402,7 @@ export default class Profile extends Component<Props, State> {
           </>
         ) : (
           <>
-            <Text> No user data found</Text>
+            <Text></Text>
           </>
         )}
       </>

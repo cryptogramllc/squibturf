@@ -51,7 +51,48 @@ export default class ProfileEdit extends Component<Props, State> {
 
   loadFreshUserData = async () => {
     try {
-      // Get fresh user data from AsyncStorage
+      // Get user data from AsyncStorage first
+      const user = await AsyncStorage.getItem('userInfo');
+      const userData = user ? JSON.parse(user) : null;
+
+      if (userData && userData.uuid) {
+        // Fetch fresh data from API
+        const response = await this.api.getProfile(userData.uuid);
+
+        if (response && response.data) {
+          // Use fresh data from API
+          const freshUserData = {
+            ...userData,
+            ...response.data,
+          };
+
+          this.setState({
+            displayName: freshUserData.displayName || freshUserData.name || '',
+            bio: freshUserData.bio || '',
+            profilePicture: freshUserData.photo || null,
+          });
+
+          // Update AsyncStorage with fresh data
+          await AsyncStorage.setItem('userInfo', JSON.stringify(freshUserData));
+        } else {
+          // Fallback to cached data if API fails
+          this.setState({
+            displayName: userData.displayName || userData.name || '',
+            bio: userData.bio || '',
+            profilePicture: userData.photo || null,
+          });
+        }
+      } else {
+        // Fallback to cached data if no UUID
+        this.setState({
+          displayName: userData?.displayName || userData?.name || '',
+          bio: userData?.bio || '',
+          profilePicture: userData?.photo || null,
+        });
+      }
+    } catch (error) {
+      console.log('Error loading fresh user data:', error);
+      // Fallback to cached data on error
       const user = await AsyncStorage.getItem('userInfo');
       const userData = user ? JSON.parse(user) : null;
 
@@ -62,8 +103,6 @@ export default class ProfileEdit extends Component<Props, State> {
           profilePicture: userData.photo || null,
         });
       }
-    } catch (error) {
-      // Silent error handling
     }
   };
 
