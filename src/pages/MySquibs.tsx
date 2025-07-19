@@ -125,8 +125,10 @@ export default class MySquibs extends Component<Props, State> {
     const index = squibs.findIndex(s => s.uuid === uuid);
     if (index === -1) return;
     Alert.alert('Delete Squib', 'Are you sure you want to delete this squib?', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: 'OK',
+        text: 'Delete',
+        style: 'destructive',
         onPress: async () => {
           const array = [...squibs];
           await this.api.deleteSquib({ uuid });

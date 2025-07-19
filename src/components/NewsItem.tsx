@@ -2,7 +2,6 @@ import moment from 'moment'; // Use ES6 import for moment
 import React, { useEffect, useState } from 'react';
 import {
   ActionSheetIOS,
-  Alert,
   Image,
   StyleSheet,
   Text,
@@ -127,18 +126,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
                   },
                   buttonIndex => {
                     if (buttonIndex === 1) {
-                      Alert.alert(
-                        'Delete Squib',
-                        'Are you sure you want to delete this squib?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: onMenuPress,
-                          },
-                        ]
-                      );
+                      onMenuPress();
                     }
                   }
                 );
