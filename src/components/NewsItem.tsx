@@ -1,6 +1,14 @@
 import moment from 'moment'; // Use ES6 import for moment
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActionSheetIOS,
+  Alert,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Video from 'react-native-video';
 const SquibApi = require('../api');
@@ -12,6 +20,7 @@ interface NewsItemProps {
   name: string; // Required name of the author
   time: string; // Required timestamp as string
   onPress: () => void; // Function to handle press event
+  onMenuPress?: () => void; // Function to handle menu press (three dots)
   lat?: number | string; // Optional latitude
   lon?: number | string; // Optional longitude
   location?: { city?: string; state?: string; country?: string }; // Optional location object
@@ -27,6 +36,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
   name,
   time,
   onPress,
+  onMenuPress,
   lat,
   lon,
   location,
@@ -102,6 +112,42 @@ const NewsItem: React.FC<NewsItemProps> = ({
               </Text>
             </View>
           </View>
+
+          {/* Three Dots Menu */}
+          {onMenuPress && (
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => {
+                ActionSheetIOS.showActionSheetWithOptions(
+                  {
+                    title: 'Squib Options',
+                    options: ['Cancel', 'Delete'],
+                    cancelButtonIndex: 0,
+                    destructiveButtonIndex: 1,
+                  },
+                  buttonIndex => {
+                    if (buttonIndex === 1) {
+                      Alert.alert(
+                        'Delete Squib',
+                        'Are you sure you want to delete this squib?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: onMenuPress,
+                          },
+                        ]
+                      );
+                    }
+                  }
+                );
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <FontAwesome name="ellipsis-h" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Squib Text Section */}
@@ -338,6 +384,11 @@ const styles = StyleSheet.create({
   mediaContainer: {
     flexDirection: 'row',
     marginTop: 10,
+  },
+  menuButton: {
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

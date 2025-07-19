@@ -5,7 +5,6 @@ import {
   ScrollView,
   StatusBar,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
@@ -206,17 +205,12 @@ export default class MySquibs extends Component<Props, State> {
                     };
                     navigation?.navigate('Squib', navData);
                   }}
+                  onMenuPress={() => this.confirmDeleteByUuid(item.uuid)}
                   lat={item.lat}
                   lon={item.lon}
                   location={item.location}
                   type={item.type}
                 />
-                <TouchableOpacity
-                  style={{ position: 'absolute', bottom: 40, right: 30 }}
-                  onPress={() => this.confirmDeleteByUuid(item.uuid)}
-                >
-                  <Icon name="trash" color="#44C1AF" size={22} />
-                </TouchableOpacity>
               </View>
             ))}
           {loadingMore && (
