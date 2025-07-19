@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { Component } from 'react';
 import {
   Alert,
@@ -35,6 +36,11 @@ interface State {
   refreshing: boolean;
   lastKey: any;
   loadingMore: boolean;
+  currentUser: {
+    name?: string;
+    photo?: string;
+    uuid?: string;
+  } | null;
 }
 
 export default class MySquibs extends Component<Props, State> {
@@ -48,11 +54,36 @@ export default class MySquibs extends Component<Props, State> {
       refreshing: false,
       lastKey: null,
       loadingMore: false,
+      currentUser: null,
     };
   }
 
   async componentDidMount() {
     this._getData();
+    this._loadCurrentUser();
+
+    // Add focus listener to refresh user data when screen is focused
+    const unsubscribe = this.props.navigation?.addListener('focus', () => {
+      this._loadCurrentUser();
+    });
+
+    // Clean up listener on unmount
+    if (unsubscribe) {
+      this.componentWillUnmount = unsubscribe;
+    }
+  }
+
+  async _loadCurrentUser() {
+    try {
+      const user = await AsyncStorage.getItem('userInfo');
+      if (user) {
+        const userData = JSON.parse(user);
+        this.setState({ currentUser: userData });
+        console.log('📱 MySquibs: Loaded current user:', userData);
+      }
+    } catch (error) {
+      console.error('Error loading current user from storage:', error);
+    }
   }
 
   async _getData(lastKey = null, append = false) {
@@ -140,7 +171,7 @@ export default class MySquibs extends Component<Props, State> {
   };
 
   render() {
-    const { squibs, refreshing, loadingMore } = this.state;
+    const { squibs, refreshing, loadingMore, currentUser } = this.state;
     const { navigation } = this.props;
     const Icon: any = FontAwesome;
     return (
@@ -186,7 +217,9 @@ export default class MySquibs extends Component<Props, State> {
                         : [item.video]
                       : undefined
                   }
-                  name="You"
+                  name={currentUser?.name || 'You'}
+                  userPhoto={currentUser?.photo}
+                  userId={currentUser?.uuid}
                   time={item.time_stamp.toString()}
                   onPress={() => {
                     const navData = {
