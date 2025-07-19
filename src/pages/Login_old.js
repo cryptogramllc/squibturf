@@ -83,24 +83,20 @@ export default class Login extends Component {
             await AsyncStorage.setItem('userInfo', JSON.stringify(response.data));
             navigation.navigate('News');
         } catch (err) {
-            console.log(err)
         }
     }
 
     _handleUserName = async (e) => {
-        console.log(e);
         const value = e.target.value;
     }
 
 
     _handlePassword = async (e) => {
-        console.log(e);
         const value = e.target.value;
     }
 
 
     _onHandleSubmit = async (e) => {
-        console.log(e);
     }
 
     _onAppleButtonPress = async () => {
@@ -110,7 +106,6 @@ export default class Login extends Component {
                 requestedOperation: appleAuth.Operation.LOGIN,
                 requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
             });
-            // console.log(identityToken);
 
             // get current authentication state for user
             // /!\ This method must be tested on a real device. On the iOS simulator it always throws an error.
@@ -178,7 +173,6 @@ export default class Login extends Component {
             }
 
         } catch (err) {
-            console.log('onAppleButtonPress ==>', err)
         }
     }
 

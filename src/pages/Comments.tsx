@@ -47,7 +47,6 @@ export default class Squib extends Component<SquibProps, SquibState> {
     async componentDidMount() {
         // const data = await this.api.getComment();
         // data && this.setState({ data });
-        console.log(this.props);
     }
 
     updateComment = (value: string) => {
@@ -66,7 +65,6 @@ export default class Squib extends Component<SquibProps, SquibState> {
 
         const data = this.state.data;
         data.comments.push(newComment);
-        console.log(data);
         this.setState({ data });
 
         await this.api.postComment({

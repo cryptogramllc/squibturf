@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { RNS3 } from 'react-native-aws3';
 import Config from 'react-native-config';
+import 'react-native-get-random-values'; // Must be imported first for uuid to work
 import ImageResizer from 'react-native-image-resizer';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -16,11 +17,7 @@ function SquibAPI() {
   const accessKey = Config.ACCESS_KEY;
   const secretKey = Config.SECRET_KEY;
   // Debug logging to check if Config values are loaded
-  console.log('Config.ACCESS_KEY:', Config.ACCESS_KEY);
-  console.log(
-    'Config.SECRET_KEY:',
-    Config.SECRET_KEY ? '***HIDDEN***' : 'undefined'
-  );
+
   this.s3Options = {
     keyPrefix: '/',
     bucket: 'squibturf-images',
@@ -52,9 +49,6 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
           type: mime,
         };
         videoFiles.push(file.name);
-        console.log(
-          `[SquibAPI] Uploading video to S3: ${file.name} (ext: ${ext}, mime: ${mime})`
-        );
       } else {
         ext = 'jpg';
         mime = 'image/jpg';
@@ -78,7 +72,6 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
           type: mime,
         };
         fileNames.push(file.name);
-        console.log(`[SquibAPI] Uploading image to S3: ${file.name}`);
       }
       const uploadResult = await RNS3.put(file, this.s3Options);
       if (uploadResult.status !== 201) {
@@ -88,7 +81,6 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
         );
         throw new Error(`S3 upload failed for ${file.name}`);
       } else {
-        console.log(`[SquibAPI] S3 upload successful for ${file.name}`);
       }
     } catch (err) {
       console.error(`[SquibAPI] Error uploading file: ${asset}`, err);
@@ -130,15 +122,12 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
       location, // Add location info here
       type: videoFiles.length > 0 ? 'video' : 'photo',
     };
-    console.log('[SquibAPI] Sending squib data to server:', {
-      text: data.text,
-      imageCount: data.image.length,
-      videoCount: videoFiles.length,
-      type: data.type,
-      location: data.location,
-    });
     const response = await this.api.post('/create-squib', data);
     console.log('[SquibAPI] Server response:', response.data);
+
+    // Invalidate user cache after posting new squib (local squibs are not cached)
+    await this.invalidateUserCache();
+
     return response;
   } catch (err) {
     console.error('[SquibAPI] Error posting squib to server:', err);
@@ -146,43 +135,39 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
   }
 };
 
-SquibAPI.prototype.getLocalSquibs = async function (lon, lat) {
+SquibAPI.prototype.getLocalSquibs = async function (
+  lon,
+  lat,
+  lastKey = null,
+  limit = 10,
+  page = 0
+) {
+  // Extract page number from lastKey if it exists
+  if (lastKey && typeof lastKey === 'object' && lastKey.page !== undefined) {
+    page = lastKey.page;
+  }
+
   const data = {
     lon: lon.toFixed(2),
     lat: lat.toFixed(2),
+    limit: limit,
+    page: page,
   };
+
   try {
     const response = await this.api.post('/local-squibs', data, {
       headers: {
         'Content-Type': 'application/json',
       },
     });
-    return response.data.body.Items;
-  } catch (error) {
-    return error;
-  }
-};
 
-SquibAPI.prototype.getUserSquibs = async function (lastKey = null) {
-  const user = await AsyncStorage.getItem('userInfo');
-  const pdata = JSON.parse(user);
-  const data = { uuid: pdata.uuid };
-  if (lastKey) {
-    data.lastKey = lastKey;
-  }
-  try {
-    const response = await this.api.post('/user-squibs', data, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
     let parsed;
     if (typeof response.data.body === 'string') {
       parsed = JSON.parse(response.data.body);
     } else {
       parsed = response.data.body;
     }
-    console.log('getUserSquibs parsed:', parsed);
+
     // Defensive: If parsed is not an object or doesn't have Items, return empty array
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.Items)) {
       return {
@@ -190,11 +175,124 @@ SquibAPI.prototype.getUserSquibs = async function (lastKey = null) {
         LastEvaluatedKey: null,
       };
     }
+
     return {
       Items: parsed.Items,
       LastEvaluatedKey: parsed.LastEvaluatedKey || null,
+      TotalItems: parsed.TotalItems || parsed.Items.length,
+      CurrentPage: parsed.CurrentPage || page,
     };
   } catch (error) {
+    return {
+      Items: [],
+      LastEvaluatedKey: null,
+    };
+  }
+};
+
+SquibAPI.prototype.getUserSquibs = async function (
+  lastKey = null,
+  limit = 10,
+  page = 0
+) {
+  const user = await AsyncStorage.getItem('userInfo');
+  const pdata = JSON.parse(user);
+  const userId = pdata.uuid;
+
+  // Create cache key for user squibs
+  const cacheKey = `user_squibs_${userId}`;
+
+  // Extract page number from lastKey if it exists
+  if (lastKey && typeof lastKey === 'object' && lastKey.page !== undefined) {
+    page = lastKey.page;
+  }
+
+  // Check if we have cached data for this user in AsyncStorage
+  try {
+    const cachedDataString = await AsyncStorage.getItem(cacheKey);
+    if (cachedDataString) {
+      const cachedData = JSON.parse(cachedDataString);
+      const cacheTimestamp = cachedData.timestamp;
+      const cacheAge = Date.now() - cacheTimestamp;
+
+      // Cache expires after 30 minutes
+      if (cacheAge < 30 * 60 * 1000) {
+        // Calculate pagination from cached data
+        const startIndex = page * limit;
+        const endIndex = startIndex + limit;
+        const pageItems = cachedData.items.slice(startIndex, endIndex);
+
+        return {
+          Items: pageItems,
+          LastEvaluatedKey:
+            cachedData.items.length > endIndex
+              ? { page: page + 1, totalItems: cachedData.items.length }
+              : null,
+          TotalItems: cachedData.items.length,
+          CurrentPage: page,
+        };
+      } else {
+        console.log('Cache expired for user squibs:', userId);
+        await AsyncStorage.removeItem(cacheKey);
+      }
+    }
+  } catch (error) {
+    console.log('Error reading user squibs cache:', error);
+  }
+
+  // If no cache or cache expired, fetch all items for this user
+
+  const data = {
+    uuid: userId,
+    limit: 1000, // Fetch all items (high limit)
+    page: 0, // Always fetch page 0 to get all items
+  };
+
+  try {
+    const response = await this.api.post('/user-squibs', data, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    let parsed;
+    if (typeof response.data.body === 'string') {
+      parsed = JSON.parse(response.data.body);
+    } else {
+      parsed = response.data.body;
+    }
+
+    // Defensive: If parsed is not an object or doesn't have Items, return empty array
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.Items)) {
+      return {
+        Items: [],
+        LastEvaluatedKey: null,
+      };
+    }
+
+    // Cache all items for this user in AsyncStorage
+    const cacheData = {
+      items: parsed.Items,
+      timestamp: Date.now(),
+    };
+    await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
+
+    // Return first page from cached data
+    const startIndex = 0;
+    const endIndex = limit;
+    const pageItems = parsed.Items.slice(startIndex, endIndex);
+
+    return {
+      Items: pageItems,
+      LastEvaluatedKey:
+        parsed.Items.length > endIndex
+          ? { page: 1, totalItems: parsed.Items.length }
+          : null,
+      TotalItems: parsed.Items.length,
+      CurrentPage: 0,
+    };
+  } catch (error) {
+    console.log('Error in getUserSquibs:', error);
     return {
       Items: [],
       LastEvaluatedKey: null,
@@ -229,13 +327,9 @@ SquibAPI.prototype.postComment = async function (data) {
 };
 
 SquibAPI.prototype.sendProfile = async function (data) {
-  console.log('[SquibAPI] sendProfile called with data:', data);
-
   try {
     // If there's a profile picture to upload
     if (data.photo && data.photo.startsWith('file://')) {
-      console.log('[SquibAPI] Uploading profile picture to S3...');
-
       // Resize the image for profile picture
       const resize = await ImageResizer.createResizedImage(
         data.photo,
@@ -257,36 +351,23 @@ SquibAPI.prototype.sendProfile = async function (data) {
         name: `profile-${uuidv4()}.jpg`,
         type: 'image/jpg',
       };
-
-      console.log('[SquibAPI] Uploading profile image to S3:', file.name);
       const uploadResult = await RNS3.put(file, this.s3Options);
 
       if (uploadResult.status !== 201) {
-        console.error(
-          '[SquibAPI] S3 upload failed for profile picture:',
-          uploadResult
-        );
         throw new Error('S3 upload failed for profile picture');
       } else {
-        console.log(
-          '[SquibAPI] S3 upload successful for profile picture:',
-          file.name
-        );
         // Replace the local file path with the S3 URL
-        data.photo = `https://squibturf-images.s3.amazonaws.com/${file.name}`;
-        console.log('[SquibAPI] Updated photo URL to:', data.photo);
+        data.photo = `https://squibturf-images.s3.us-east-1.amazonaws.com/${file.name}`;
       }
     }
 
     // Send the updated data to the backend
-    console.log('[SquibAPI] Sending profile data to backend:', data);
     const response = await this.api.post('/profile', data, {
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    console.log('[SquibAPI] Profile update response:', response.data);
     return response;
   } catch (error) {
     console.error('[SquibAPI] Error in sendProfile:', error);
@@ -322,6 +403,30 @@ SquibAPI.prototype.deleteSquib = async function (data) {
     console.log(error.request);
   }
   return response;
+};
+
+// Cache invalidation function
+SquibAPI.prototype.invalidateLocationCache = async function (lon, lat) {
+  try {
+    const locationKey = `squibs_${lon.toFixed(2)}_${lat.toFixed(2)}`;
+    await AsyncStorage.removeItem(locationKey);
+  } catch (error) {
+    console.log('[SquibAPI] Error invalidating cache:', error);
+  }
+};
+
+// Cache invalidation function for user squibs
+SquibAPI.prototype.invalidateUserCache = async function () {
+  try {
+    const user = await AsyncStorage.getItem('userInfo');
+    const pdata = JSON.parse(user);
+    const userId = pdata.uuid;
+    const cacheKey = `user_squibs_${userId}`;
+    await AsyncStorage.removeItem(cacheKey);
+    console.log('[SquibAPI] Invalidated cache for user:', userId);
+  } catch (error) {
+    console.log('[SquibAPI] Error invalidating user cache:', error);
+  }
 };
 
 module.exports = SquibAPI;

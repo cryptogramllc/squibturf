@@ -43,7 +43,6 @@ export default class Squib extends Component {
         };
         var data = this.state.data;
         data.comments.push(newComment);
-        console.log(data)
         this.setState({ data })
         await this.api.postComment({
             commment: this.state.comment,

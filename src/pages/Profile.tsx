@@ -77,12 +77,10 @@ export default class Profile extends Component<Props, State> {
   }
 
   async componentDidMount() {
-    console.log('Profile - componentDidMount called');
     await this.loadUserData();
 
     // Add focus listener to refresh data when screen is focused
     const unsubscribe = this.props.navigation?.addListener('focus', () => {
-      console.log('Profile - focus event triggered');
       this.loadUserData();
     });
 
@@ -95,7 +93,6 @@ export default class Profile extends Component<Props, State> {
   componentDidUpdate(prevProps: Props) {
     // If the data prop changed (e.g., after profile edit), refresh the data
     if (prevProps.data !== this.props.data) {
-      console.log('Profile - data prop changed, refreshing user data');
       this.loadUserData();
     }
   }
@@ -111,32 +108,27 @@ export default class Profile extends Component<Props, State> {
       // If we have user data with a UUID, fetch fresh profile data from API
       if (userData && userData.uuid) {
         try {
-          console.log(
-            'Profile - fetching fresh profile data for UUID:',
-            userData.uuid
-          );
           const response = await this.api.getProfile(userData.uuid);
 
           if (response && response.data) {
-            console.log('Profile - API response:', response.data);
-
-            // Merge API response with existing user data
-            const freshProfileData = {
-              ...userData,
-              ...response.data,
-            };
-
-            console.log('Profile - merged profile data:', freshProfileData);
+            // Check if API response has photo field
+            if (response.data.photo && userData) {
+              userData = {
+                ...userData,
+                ...response.data,
+              };
+            } else if (userData) {
+              // Only merge other fields, keep local photo
+              const { photo, ...apiDataWithoutPhoto } = response.data;
+              userData = {
+                ...userData,
+                ...apiDataWithoutPhoto,
+              };
+            }
 
             // Save the fresh data to AsyncStorage
-            await AsyncStorage.setItem(
-              'userInfo',
-              JSON.stringify(freshProfileData)
-            );
-
-            userData = freshProfileData;
+            await AsyncStorage.setItem('userInfo', JSON.stringify(userData));
           } else {
-            console.log('Profile - no API response, using cached data');
           }
         } catch (error) {
           console.log('Profile - error fetching profile data:', error);
@@ -144,9 +136,6 @@ export default class Profile extends Component<Props, State> {
         }
       }
     }
-
-    console.log('Profile - final userData:', userData);
-    console.log('Profile - bio field:', userData?.bio);
     this.setState({ userData: userData ?? null });
   };
 
@@ -155,16 +144,13 @@ export default class Profile extends Component<Props, State> {
   };
 
   refreshProfile = async () => {
+    await AsyncStorage.removeItem('userInfo');
     await this.loadUserData();
   };
 
   render() {
     const { userData } = this.state;
     const Icon: any = FontAwesome;
-
-    console.log('Profile - render userData:', userData);
-    console.log('Profile - render bio field:', userData?.bio);
-    console.log('Profile - should show bio:', userData?.bio ? 'YES' : 'NO');
     return (
       <>
         {userData ? (
@@ -209,12 +195,7 @@ export default class Profile extends Component<Props, State> {
 
                   // Use the callback to handle navigation
                   if (this.props.onEditProfile) {
-                    console.log('Profile - calling onEditProfile callback');
                     this.props.onEditProfile(this.state.userData);
-                  } else {
-                    console.log(
-                      'Profile - onEditProfile callback not available'
-                    );
                   }
                 }}
                 style={{
@@ -237,7 +218,33 @@ export default class Profile extends Component<Props, State> {
                     borderRadius: 150,
                     overflow: 'hidden',
                   }}
-                  source={{ uri: userData.photo }}
+                  source={{
+                    uri: (() => {
+                      const photoUrl =
+                        userData.photo &&
+                        userData.photo.includes(
+                          'squibturf-images.s3.amazonaws.com'
+                        )
+                          ? userData.photo.replace(
+                              'squibturf-images.s3.amazonaws.com',
+                              'squibturf-images.s3.us-east-1.amazonaws.com'
+                            )
+                          : userData.photo;
+                      // Ensure the URL has the correct format with double slash
+                      const finalPhotoUrl =
+                        photoUrl &&
+                        photoUrl.includes(
+                          'squibturf-images.s3.us-east-1.amazonaws.com'
+                        ) &&
+                        !photoUrl.includes('//profile-')
+                          ? photoUrl.replace(
+                              'squibturf-images.s3.us-east-1.amazonaws.com/',
+                              'squibturf-images.s3.us-east-1.amazonaws.com//'
+                            )
+                          : photoUrl;
+                      return finalPhotoUrl;
+                    })(),
+                  }}
                 />
               </View>
               <View style={{ top: 200, width: '100%', padding: 20 }}>

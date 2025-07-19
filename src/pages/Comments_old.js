@@ -33,7 +33,6 @@ export default class Squib extends Component {
     async componentDidMount() {
         // const data = await this.api.getComment();
         // data && this.setState({ data })
-        console.log(this.props)
     }
     updateComment = (value) => {
         this.setState({ comment: value });
@@ -47,7 +46,6 @@ export default class Squib extends Component {
         };
         var data = this.state.data;
         data.comments.push(newComment);
-        console.log(data)
         this.setState({ data })
         await this.api.postComment({
             commment: this.state.comment,

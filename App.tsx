@@ -74,7 +74,6 @@ export class Home extends Component<HomeProps, HomeState> {
   }
 
   render() {
-    console.log('Home render - showCreateSquib:', this.state.showCreateSquib);
     const Icon: any = FontAwesome;
     return (
       <>
@@ -131,9 +130,7 @@ export class Home extends Component<HomeProps, HomeState> {
             }}
             listeners={{
               tabPress: e => {
-                console.log('Tab pressed!');
                 e.preventDefault();
-                console.log('Setting showCreateSquib to true');
                 this.setState({ showCreateSquib: true });
               },
             }}
@@ -157,12 +154,10 @@ export class Home extends Component<HomeProps, HomeState> {
         <ModalItem show={this.state.showCreateSquib}>
           <CreateSquib
             close={(value: boolean) => {
-              console.log('CreateSquib close called with:', value);
               this.setState({ showCreateSquib: !value });
               this.setState({ data: {} });
               // Trigger refresh of NewsPage when squib is posted
               if (value) {
-                console.log('Squib posted, triggering refresh');
                 this.setState(prevState => ({
                   refreshTrigger: prevState.refreshTrigger + 1,
                 }));
@@ -190,7 +185,6 @@ export default class App extends Component<AppProps, AppState> {
   }
 
   async componentDidMount() {
-    console.log('Component Mounted');
     // Remove all trackingStatus and getTrackingStatus logic
     const user = await AsyncStorage.getItem('userInfo');
     if (user) {
@@ -212,7 +206,6 @@ export default class App extends Component<AppProps, AppState> {
   }
 
   render() {
-    console.log('Rendering app');
     const { tracking } = this.state;
     const Icon: any = FontAwesome;
     return (

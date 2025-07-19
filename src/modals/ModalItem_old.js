@@ -19,7 +19,6 @@ export default class ModalItem extends Component {
             children,
             show
         } = this.props;
-        console.log('modal show', show)
         return (
 
             <Modal

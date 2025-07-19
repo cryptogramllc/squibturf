@@ -13,7 +13,6 @@ const storeUser = async userData => {
       body: JSON.stringify('Successfully processed login'),
     };
   } catch (err) {
-    console.log(err);
     throw err;
   }
 };
@@ -60,7 +59,6 @@ const updateUser = async userData => {
     const result = await dynamoDb.update(params).promise();
     return { statusCode: 200, body: JSON.stringify(result.Attributes) };
   } catch (err) {
-    console.log(err);
     throw err;
   }
 };
@@ -71,7 +69,6 @@ const isProfileComplete = userData => {
 };
 
 exports.handler = async event => {
-  console.log(JSON.stringify(event, null, 4));
 
   try {
     const { email } = event;
@@ -90,7 +87,6 @@ exports.handler = async event => {
 
     if (!existingUser) {
       // New user - create and check if profile completion is needed
-      console.log('Creating new user');
       await storeUser(event);
 
       const needsProfileCompletion = !isProfileComplete(event);
@@ -99,20 +95,17 @@ exports.handler = async event => {
         needsProfileCompletion,
       };
 
-      console.log(
         'New user created, needs profile completion:',
         needsProfileCompletion
       );
       return userData;
     } else {
       // Existing user - check if profile completion is needed
-      console.log('User exists, checking profile completion status');
 
       const needsProfileCompletion = !isProfileComplete(existingUser);
 
       // If this is a profile update (has profileCompleted flag), update the user
       if (event.profileCompleted) {
-        console.log('Updating existing user profile');
         const updateResult = await updateUser(event);
         const updatedUser = JSON.parse(updateResult.body);
 
@@ -128,14 +121,12 @@ exports.handler = async event => {
         needsProfileCompletion,
       };
 
-      console.log(
         'Returning existing user, needs profile completion:',
         needsProfileCompletion
       );
       return userData;
     }
   } catch (err) {
-    console.log('Error in profile handler:', err);
     throw err;
   }
 };

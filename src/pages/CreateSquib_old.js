@@ -178,7 +178,6 @@ export default class CreateSquib extends Component {
                                                 const lat = location.coords.latitude;
                                                 const lon = location.coords.longitude;
                                                 res({ lon, lat })
-                                            }, error => console.log("Error : " + JSON.stringify(error)),
                                             { enableHighAccuracy: true, timeout: 3000, maximumAge: 1000 }
                                         )
                                     });

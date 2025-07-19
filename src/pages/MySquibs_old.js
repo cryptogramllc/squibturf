@@ -31,7 +31,6 @@ export default class NewsPage extends Component {
             data && this.setState({ squibs: data })
             this.setState({ refreshing: false });
         } catch (error) {
-            console.log(error);
         }
 
     }
@@ -68,7 +67,6 @@ export default class NewsPage extends Component {
 
                         }
                     },
-                    { text: "Cancel", onPress: () => console.log("OK Pressed") }
                 ]
             )
         }
@@ -110,7 +108,6 @@ export default class NewsPage extends Component {
                                                     user_id: item.user_id,
                                                     post_id: item.post_id
                                                 }
-                                                // console.log('data ==>', data)
                                                 this.setState(data);
                                                 navigation.navigate('Squib', data)
 

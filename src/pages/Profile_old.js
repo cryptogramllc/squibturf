@@ -52,7 +52,6 @@ export default class Profile extends Component {
         }
     }
     async componentDidMount() {
-        console.log("_loadData", this.props)
         let userData = this.props.data;
         if (!userData) {
             const user = await AsyncStorage.getItem('userInfo');

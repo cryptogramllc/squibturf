@@ -21,7 +21,6 @@ export default class ModalItem extends Component<ModalItemProps> {
 
     render() {
         const { children, show } = this.props;
-        console.log('modal show', show);
 
         return (
             <Modal

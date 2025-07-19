@@ -51,7 +51,6 @@ exports.getBlogPost = async (event) => {
             ...data.Item,
             date: await formattedDate(data.Item.date), // Assuming 'date' is the attribute to be formatted
         };
-        console.log("🚀 ~ file: index.js:49 ~ exports.getBlogPost= ~ formattedItem:", formattedItem)
 
 
         return {
@@ -62,7 +61,6 @@ exports.getBlogPost = async (event) => {
             },
         };
     } catch (err) {
-        console.log("🚀 ~ file: index.js:66 ~ exports.getBlogPost= ~ err:", err)
         return {
             statusCode: 500,
             body: JSON.stringify({ error: 'Internal server error' }),
@@ -109,7 +107,6 @@ exports.getBlogList = async (event) => {
             },
         };
     } catch (error) {
-        console.log("🚀 ~ file: index.js:101 ~ exports.getBlogList= ~ error:", error)
         return {
             statusCode: 500,
             body: JSON.stringify({ error, msg: 'Could not retrieve data from DynamoDB' }),

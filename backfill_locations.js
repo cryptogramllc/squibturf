@@ -40,7 +40,6 @@ async function updateMissingLocations() {
                     };
                     await docClient.update(updateParams).promise();
                     updatedCount++;
-                    console.log(`Updated ${item.uuid} with location:`, location);
                 } catch (e) {
                     console.warn(`Failed to update ${item.uuid}:`, e.message);
                 }
@@ -50,7 +49,6 @@ async function updateMissingLocations() {
         ExclusiveStartKey = data.LastEvaluatedKey;
     } while (ExclusiveStartKey);
 
-    console.log(`Done! Updated ${updatedCount} items.`);
 }
 
 updateMissingLocations().catch(console.error); 

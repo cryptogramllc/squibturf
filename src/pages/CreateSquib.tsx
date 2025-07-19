@@ -135,6 +135,24 @@ export default class CreateSquib extends Component<
         useNativeDriver: true,
       }).start();
     }
+
+    // Auto-advance to squib mode when 5 media items are reached
+    const prevTotalCount =
+      prevState.pictures.length +
+      (prevState.latestPic ? 1 : 0) +
+      (prevState.latestVideo ? 1 : 0);
+    const currentTotalCount =
+      this.state.pictures.length +
+      (this.state.latestPic ? 1 : 0) +
+      (this.state.latestVideo ? 1 : 0);
+
+    if (prevTotalCount < 5 && currentTotalCount === 5 && !this.state.squib) {
+      // Automatically switch to squib mode after a short delay
+      this.setState({
+        camera: false,
+        squib: true,
+      });
+    }
   }
 
   _renderItem = ({ item }: { item: string; index: number }) => (
@@ -167,7 +185,7 @@ export default class CreateSquib extends Component<
       (latestVideo ? 1 : 0);
     const totalCount =
       pictures.length + (latestPic ? 1 : 0) + (latestVideo ? 1 : 0);
-    if (totalCount >= 5) return;
+    if (totalCount > 5) return; // Changed from >= to > to allow exactly 5
     if (latestPic) {
       const newPictures = Array.isArray(pictures)
         ? pictures.concat(latestPic)
@@ -184,7 +202,7 @@ export default class CreateSquib extends Component<
     ).length;
     if (videoCount > 0 || !latestVideo) return;
     // Only allow up to 5 total media assets
-    if (pictures.length >= 5) return;
+    if (pictures.length >= 5) return; // This is fine since we're adding 1 video
     const newPictures = Array.isArray(pictures)
       ? pictures.concat(latestVideo)
       : [latestVideo];
@@ -396,10 +414,22 @@ export default class CreateSquib extends Component<
   }
 
   pickImageFromLibrary = async () => {
+    const { pictures, latestVideo } = this.state;
+    const currentTotalCount = pictures.length + (latestVideo ? 1 : 0);
+    const remainingSlots = 5 - currentTotalCount;
+    console.log('🚀 ~ pickImageFromLibrary= ~ remainingSlots:', remainingSlots);
+
+    if (remainingSlots === 0) {
+      this.setState({
+        camera: false,
+        squib: true,
+      });
+    }
+
     const options = {
       mediaType: 'photo' as MediaType,
       quality: 0.8 as const,
-      selectionLimit: this.state.count,
+      selectionLimit: remainingSlots,
       includeBase64: false,
     };
 
@@ -434,13 +464,15 @@ export default class CreateSquib extends Component<
         const selectedImages = response.assets
           .map(asset => asset.uri)
           .filter(uri => uri) as string[];
+
+        // Only add images up to the 5-item limit
+        const imagesToAdd = selectedImages.slice(0, remainingSlots);
         const pictures = Array.isArray(this.state.pictures)
-          ? this.state.pictures.concat(selectedImages)
-          : selectedImages;
-        const newCount = Math.max(0, this.state.count - selectedImages.length);
+          ? this.state.pictures.concat(imagesToAdd)
+          : imagesToAdd;
+
         this.setState({
           pictures,
-          count: newCount,
         });
       }
     });
@@ -522,8 +554,10 @@ export default class CreateSquib extends Component<
     const videoCount = pictures.filter(
       p => p.endsWith('.mp4') || p.endsWith('.mov')
     ).length;
-    const totalCount = pictures.length + (latestVideo ? 1 : 0);
+    const totalCount =
+      pictures.length + (latestPic ? 1 : 0) + (latestVideo ? 1 : 0);
     const remaining = 5 - totalCount;
+    console.log('🚀 ~ render= ~ remaining:', remaining);
     return (
       <>
         {squib && (
@@ -533,34 +567,36 @@ export default class CreateSquib extends Component<
               flex: 1,
             }}
           >
-            {/* For squib (left arrow) */}
-            <View
-              style={{
-                height: 50,
-                width: 50,
-                position: 'absolute',
-                top: 60, // ensure consistent distance from top
-                left: 25,
-                zIndex: 999,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => {
-                  this.setState({
-                    camera: !camera,
-                    squib: !squib,
-                  });
+            {/* For squib (left arrow) - only show if less than 5 media items */}
+            {totalCount < 5 && (
+              <View
+                style={{
+                  height: 50,
+                  width: 50,
+                  position: 'absolute',
+                  top: 60, // ensure consistent distance from top
+                  left: 25,
+                  zIndex: 999,
                 }}
-                style={{}}
               >
-                <Icon
-                  name="arrow-left"
-                  style={{ marginTop: 10 }}
-                  color={'white'}
-                  size={30}
-                />
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    this.setState({
+                      camera: !camera,
+                      squib: !squib,
+                    });
+                  }}
+                  style={{}}
+                >
+                  <Icon
+                    name="arrow-left"
+                    style={{ marginTop: 10 }}
+                    color={'white'}
+                    size={30}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
             <View
               style={{
                 flex: 1,
@@ -637,12 +673,25 @@ export default class CreateSquib extends Component<
                     onPress={this.deleteCurrentMedia}
                     style={{
                       position: 'absolute',
-                      top: 120,
-                      right: 16,
+                      bottom: 200,
+                      left: '50%',
+                      marginLeft: -40,
                       zIndex: 10,
+                      backgroundColor: 'rgba(255, 0, 0, 0.8)',
+                      paddingHorizontal: 16,
+                      paddingVertical: 8,
+                      borderRadius: 20,
                     }}
                   >
-                    <Icon name="trash" color="#ff0000" size={24} />
+                    <Text
+                      style={{
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: 16,
+                      }}
+                    >
+                      Delete
+                    </Text>
                   </TouchableOpacity>
                 )}
               </TouchableOpacity>
@@ -828,55 +877,63 @@ export default class CreateSquib extends Component<
             <TouchableOpacity
               onPress={() => {
                 this.setState({ takingPic: false, latestPic: null });
+              }}
+              style={{
+                position: 'absolute',
+                zIndex: 1001,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderRadius: 25,
+                height: 50,
+                width: 120,
+                left: 20,
+                bottom: 50,
+                justifyContent: 'center',
+                alignItems: 'center',
+                flexDirection: 'row',
+              }}
+            >
+              <Icon
+                name="refresh"
+                style={{ marginRight: 8 }}
+                color={'white'}
+                size={20}
+              />
+              <Text
+                style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}
+              >
+                Retake
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                this.setState({ takingPic: false, latestPic: null });
                 this.storePic();
               }}
               style={{
                 position: 'absolute',
                 zIndex: 1001,
-                borderWidth: 8,
-                borderColor: 'white',
-                borderRadius: 200,
-                height: 150,
-                width: 150,
-                left: '50%',
-                top: '50%',
-                marginLeft: -75,
-                marginTop: -200,
-                opacity: 0.5,
+                backgroundColor: '#44C1AF',
+                borderRadius: 25,
+                height: 50,
+                width: 140,
+                right: 20,
+                bottom: 50,
+                justifyContent: 'center',
+                alignItems: 'center',
+                flexDirection: 'row',
               }}
             >
               <Icon
                 name="check"
-                style={{ marginTop: 15, marginLeft: 15 }}
+                style={{ marginRight: 8 }}
                 color={'white'}
-                size={100}
+                size={20}
               />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                this.setState({ takingPic: false, latestPic: null });
-              }}
-              style={{
-                position: 'absolute',
-                zIndex: 1001,
-                borderWidth: 8,
-                borderColor: 'white',
-                borderRadius: 200,
-                height: 150,
-                width: 150,
-                left: '50%',
-                top: '50%',
-                marginLeft: -75,
-                marginTop: 50,
-                opacity: 0.5,
-              }}
-            >
-              <Icon
-                name="times"
-                style={{ marginTop: 10, marginLeft: 28 }}
-                color={'white'}
-                size={100}
-              />
+              <Text
+                style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}
+              >
+                Use Photo
+              </Text>
             </TouchableOpacity>
             <Image
               source={{ uri: latestPic }}
@@ -927,55 +984,63 @@ export default class CreateSquib extends Component<
             <TouchableOpacity
               onPress={() => {
                 this.setState({ isRecording: false, latestVideo: null });
+              }}
+              style={{
+                position: 'absolute',
+                zIndex: 1001,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderRadius: 25,
+                height: 50,
+                width: 120,
+                left: 20,
+                bottom: 50,
+                justifyContent: 'center',
+                alignItems: 'center',
+                flexDirection: 'row',
+              }}
+            >
+              <Icon
+                name="refresh"
+                style={{ marginRight: 8 }}
+                color={'white'}
+                size={20}
+              />
+              <Text
+                style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}
+              >
+                Retake
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                this.setState({ isRecording: false, latestVideo: null });
                 this.storeVideo();
               }}
               style={{
                 position: 'absolute',
                 zIndex: 1001,
-                borderWidth: 8,
-                borderColor: 'white',
-                borderRadius: 200,
-                height: 150,
-                width: 150,
-                left: '50%',
-                top: '50%',
-                marginLeft: -75,
-                marginTop: -200,
-                opacity: 0.5,
+                backgroundColor: '#44C1AF',
+                borderRadius: 25,
+                height: 50,
+                width: 140,
+                right: 20,
+                bottom: 50,
+                justifyContent: 'center',
+                alignItems: 'center',
+                flexDirection: 'row',
               }}
             >
               <Icon
                 name="check"
-                style={{ marginTop: 15, marginLeft: 15 }}
+                style={{ marginRight: 8 }}
                 color={'white'}
-                size={100}
+                size={20}
               />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                this.setState({ isRecording: false, latestVideo: null });
-              }}
-              style={{
-                position: 'absolute',
-                zIndex: 1001,
-                borderWidth: 8,
-                borderColor: 'white',
-                borderRadius: 200,
-                height: 150,
-                width: 150,
-                left: '50%',
-                top: '50%',
-                marginLeft: -75,
-                marginTop: 50,
-                opacity: 0.5,
-              }}
-            >
-              <Icon
-                name="times"
-                style={{ marginTop: 10, marginLeft: 28 }}
-                color={'white'}
-                size={100}
-              />
+              <Text
+                style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}
+              >
+                Use Video
+              </Text>
             </TouchableOpacity>
             <View
               style={{

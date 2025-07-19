@@ -36,13 +36,11 @@ export default class NewsPage extends Component {
                 message: 'DemoApp would like access to your location ',
             },
         );
-        console.log('granted => ', granted)
 
         return granted === RESULTS.GRANTED;
     }
 
     async _getData() {
-        console.log('getting data');
         const granted = await this._getLocationPermissions();
         if (granted) {
             navigator.geolocation = require('@react-native-community/geolocation');
@@ -54,7 +52,6 @@ export default class NewsPage extends Component {
                             const lat = location.coords.latitude;
                             const lon = location.coords.longitude;
                             res({ lon, lat })
-                        }, error => console.log("Error : " + JSON.stringify(error)),
                         { enableHighAccuracy: true, timeout: 3000, maximumAge: 1000 }
                     )
                 });
@@ -62,10 +59,8 @@ export default class NewsPage extends Component {
                 data && this.setState({ squibs: data })
                 this.setState({ refreshing: false });
             } catch (error) {
-                console.log('goelocation error', error);
             }
         } else {
-            console.log('permission not granted')
         }
     }
 

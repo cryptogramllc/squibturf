@@ -45,6 +45,28 @@ export default class ProfileEdit extends Component<Props, State> {
     };
   }
 
+  async componentDidMount() {
+    await this.loadFreshUserData();
+  }
+
+  loadFreshUserData = async () => {
+    try {
+      // Get fresh user data from AsyncStorage
+      const user = await AsyncStorage.getItem('userInfo');
+      const userData = user ? JSON.parse(user) : null;
+
+      if (userData) {
+        this.setState({
+          displayName: userData.displayName || userData.name || '',
+          bio: userData.bio || '',
+          profilePicture: userData.photo || null,
+        });
+      }
+    } catch (error) {
+      // Silent error handling
+    }
+  };
+
   selectImageFromLibrary = () => {
     const options = {
       mediaType: 'photo' as const,
@@ -55,9 +77,7 @@ export default class ProfileEdit extends Component<Props, State> {
 
     launchImageLibrary(options, response => {
       if (response.didCancel) {
-        console.log('User cancelled image picker');
       } else if (response.errorCode) {
-        console.log('ImagePicker Error: ', response.errorMessage);
         Alert.alert('Error', 'Failed to select image from library');
       } else if (response.assets && response.assets[0]) {
         const imageUri = response.assets[0].uri;
@@ -69,7 +89,6 @@ export default class ProfileEdit extends Component<Props, State> {
   };
 
   takePhoto = () => {
-    console.log('ProfileEdit - takePhoto called');
     const options = {
       mediaType: 'photo' as const,
       quality: 0.8 as const,
@@ -77,23 +96,16 @@ export default class ProfileEdit extends Component<Props, State> {
       maxHeight: 500,
     };
 
-    console.log('ProfileEdit - launching camera with options:', options);
     launchCamera(options, response => {
-      console.log('ProfileEdit - camera response:', response);
       if (response.didCancel) {
-        console.log('User cancelled camera');
       } else if (response.errorCode) {
-        console.log('Camera Error: ', response.errorMessage);
         Alert.alert('Error', 'Failed to take photo');
       } else if (response.assets && response.assets[0]) {
         const imageUri = response.assets[0].uri;
-        console.log('ProfileEdit - image URI:', imageUri);
         if (imageUri) {
-          console.log('ProfileEdit - setting profile picture to:', imageUri);
           this.setState({ profilePicture: imageUri });
         }
       } else {
-        console.log('ProfileEdit - no valid image assets in response');
       }
     });
   };
@@ -117,30 +129,25 @@ export default class ProfileEdit extends Component<Props, State> {
 
   handleSaveProfile = async () => {
     const { displayName, bio, profilePicture } = this.state;
-    const { navigation, route } = this.props;
-    const userData = route?.params?.userData;
-
-    console.log('ProfileEdit - handleSaveProfile called');
-    console.log('ProfileEdit - current state:', {
-      displayName,
-      bio,
-      profilePicture,
-    });
-    console.log('ProfileEdit - userData from route:', userData);
+    const { navigation } = this.props;
 
     if (!displayName.trim()) {
       Alert.alert('Profile Incomplete', 'Please enter a display name.');
       return;
     }
 
-    if (!userData) {
-      Alert.alert('Error', 'User data not found. Please try again.');
-      return;
-    }
-
     this.setState({ isLoading: true });
 
     try {
+      // Get fresh user data from AsyncStorage
+      const user = await AsyncStorage.getItem('userInfo');
+      const userData = user ? JSON.parse(user) : null;
+
+      if (!userData) {
+        Alert.alert('Error', 'User data not found. Please try again.');
+        return;
+      }
+
       // Create updated user profile
       const updatedUserData = {
         ...userData,
@@ -150,16 +157,11 @@ export default class ProfileEdit extends Component<Props, State> {
         profileCompleted: true,
       };
 
-      console.log('ProfileEdit - updatedUserData to save:', updatedUserData);
-
-      // Save to AsyncStorage
-      console.log('ProfileEdit - saving to AsyncStorage:', updatedUserData);
-      await AsyncStorage.setItem('userInfo', JSON.stringify(updatedUserData));
-
-      // Send to backend API
-      console.log('ProfileEdit - sending to backend:', updatedUserData);
+      // Send to backend API first
       const apiResponse = await this.api.sendProfile(updatedUserData);
-      console.log('ProfileEdit - API response:', apiResponse);
+
+      // Only save to AsyncStorage after successful API call
+      await AsyncStorage.setItem('userInfo', JSON.stringify(updatedUserData));
 
       Alert.alert('Success', 'Profile updated successfully!', [
         {
@@ -172,7 +174,7 @@ export default class ProfileEdit extends Component<Props, State> {
         },
       ]);
     } catch (error) {
-      console.log('ProfileEdit - error saving profile:', error);
+      // If API call fails, don't update AsyncStorage to preserve user session
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       this.setState({ isLoading: false });
@@ -212,7 +214,33 @@ export default class ProfileEdit extends Component<Props, State> {
             >
               {profilePicture ? (
                 <Image
-                  source={{ uri: profilePicture }}
+                  source={{
+                    uri: (() => {
+                      const photoUrl =
+                        profilePicture &&
+                        profilePicture.includes(
+                          'squibturf-images.s3.amazonaws.com'
+                        )
+                          ? profilePicture.replace(
+                              'squibturf-images.s3.amazonaws.com',
+                              'squibturf-images.s3.us-east-1.amazonaws.com'
+                            )
+                          : profilePicture;
+                      // Ensure the URL has the correct format with double slash
+                      const finalPhotoUrl =
+                        photoUrl &&
+                        photoUrl.includes(
+                          'squibturf-images.s3.us-east-1.amazonaws.com'
+                        ) &&
+                        !photoUrl.includes('//profile-')
+                          ? photoUrl.replace(
+                              'squibturf-images.s3.us-east-1.amazonaws.com/',
+                              'squibturf-images.s3.us-east-1.amazonaws.com//'
+                            )
+                          : photoUrl;
+                      return finalPhotoUrl;
+                    })(),
+                  }}
                   style={styles.profilePicture}
                 />
               ) : (

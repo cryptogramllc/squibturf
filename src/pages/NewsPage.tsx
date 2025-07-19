@@ -28,10 +28,12 @@ interface NewsItemData {
   user_id: string;
   post_id: string;
   time_stamp: number;
+  date_key?: number; // Epoch time for sorting
   lat?: number;
   lon?: number;
   location?: { city?: string; state?: string; country?: string };
   type?: 'photo' | 'video';
+  user_photo?: string;
 }
 
 interface Props {
@@ -43,10 +45,13 @@ interface State {
   squibs: NewsItemData[];
   refreshing: boolean;
   loading: boolean;
+  lastKey: any;
+  loadingMore: boolean;
 }
 
 export default class NewsPage extends Component<Props, State> {
   private api: typeof SquibApi;
+  private scrollEndTimeout: NodeJS.Timeout | null = null;
 
   constructor(props: Props) {
     super(props);
@@ -55,16 +60,18 @@ export default class NewsPage extends Component<Props, State> {
       squibs: [],
       refreshing: false,
       loading: false,
+      lastKey: null,
+      loadingMore: false,
     };
   }
 
   async componentDidMount() {
-    this._getData();
+    this._getData(null, false); // Initial load, don't append
 
     // Add focus listener to refresh data when screen comes into focus
     const unsubscribe = this.props.navigation?.addListener('focus', () => {
       console.log('NewsPage - focus event triggered, refreshing data');
-      this._getData();
+      this._getData(null, false); // Refresh, don't append
     });
 
     // Clean up listener on unmount
@@ -80,7 +87,7 @@ export default class NewsPage extends Component<Props, State> {
       this.props.refreshTrigger
     ) {
       console.log('NewsPage - refreshTrigger changed, refreshing data');
-      this._getData();
+      this._getData(null, false); // Refresh, don't append
     }
   }
 
@@ -133,44 +140,113 @@ export default class NewsPage extends Component<Props, State> {
     });
   };
 
-  async _getData() {
-    console.log('getting data');
-    this.setState({ loading: true });
+  async _getData(lastKey = null, append = false) {
+    console.log('=== NewsPage _getData called ===');
+    console.log('lastKey:', lastKey);
+    console.log('append:', append);
+
     try {
       const granted = await this._getLocationPermissions();
       if (granted) {
         try {
           const loc = await this._getCurrentPosition();
-          const data = await this.api.getLocalSquibs(loc.lon, loc.lat);
-          if (data) {
-            this.setState({ squibs: data });
+          console.log('Location obtained:', loc);
+          const data = await this.api.getLocalSquibs(
+            loc.lon,
+            loc.lat,
+            lastKey,
+            10
+          ); // Always use limit 10
+          console.log('API response data:', data);
+          console.log('Data.Items length:', data?.Items?.length);
+
+          if (data && data.Items) {
+            console.log('Setting squibs with', data.Items.length, 'items');
+            console.log(
+              'Current squibs count before update:',
+              this.state.squibs.length
+            );
+            console.log('Append mode:', append);
+
+            this.setState(prevState => {
+              let newSquibs = append
+                ? [...prevState.squibs, ...data.Items]
+                : data.Items;
+
+              // Sort by date_key in descending order (newest first)
+              newSquibs.sort((a: NewsItemData, b: NewsItemData) => {
+                const dateA = a.date_key || a.time_stamp || 0;
+                const dateB = b.date_key || b.time_stamp || 0;
+                return dateB - dateA;
+              });
+
+              console.log('New squibs count after update:', newSquibs.length);
+              console.log('New lastKey:', data.LastEvaluatedKey || null);
+
+              return {
+                squibs: newSquibs,
+                lastKey: data.LastEvaluatedKey || null,
+                refreshing: false,
+                loadingMore: false,
+              };
+            });
+          } else {
+            console.log('No data.Items found, setting empty array');
+            this.setState({
+              squibs: append ? this.state.squibs : [],
+              refreshing: false,
+              loadingMore: false,
+            });
           }
         } catch (error) {
           console.log('geolocation or API error', error);
-          // Set empty state so UI can render even if API fails
-          this.setState({ squibs: [] });
+          this.setState({
+            squibs: append ? this.state.squibs : [],
+            refreshing: false,
+            loadingMore: false,
+          });
         }
       } else {
         console.log('permission not granted');
-        // Set empty state so UI can render even without location
-        this.setState({ squibs: [] });
+        this.setState({
+          squibs: append ? this.state.squibs : [],
+          refreshing: false,
+          loadingMore: false,
+        });
       }
     } catch (error) {
       console.log('Error in _getData:', error);
-      // Set empty state so UI can render even if everything fails
-      this.setState({ squibs: [] });
-    } finally {
-      this.setState({ refreshing: false, loading: false });
+      this.setState({
+        squibs: append ? this.state.squibs : [],
+        refreshing: false,
+        loadingMore: false,
+      });
     }
   }
 
   _onRefresh = () => {
-    this.setState({ refreshing: true });
-    this._getData();
+    console.log('=== Pull to refresh triggered ===');
+    this.setState({ refreshing: true, lastKey: null }, () =>
+      this._getData(null, false)
+    );
+  };
+
+  _onEndReached = () => {
+    const { lastKey, loadingMore } = this.state;
+    console.log('=== onEndReached called ===');
+    console.log('lastKey:', lastKey);
+    console.log('loadingMore:', loadingMore);
+
+    if (lastKey && !loadingMore) {
+      console.log('Loading more data...');
+      this.setState({ loadingMore: true }, () => this._getData(lastKey, true));
+    } else {
+      console.log('Skipping load more - no lastKey or already loading');
+    }
   };
 
   render() {
-    const { squibs, refreshing, loading } = this.state;
+    const { squibs, refreshing, loading, loadingMore } = this.state;
     const { navigation } = this.props;
     const Icon: any = FontAwesome;
     return (
@@ -200,54 +276,70 @@ export default class NewsPage extends Component<Props, State> {
                 tintColor="#44C1AF"
               />
             }
+            onScroll={({ nativeEvent }) => {
+              const { layoutMeasurement, contentOffset, contentSize } =
+                nativeEvent;
+              if (
+                layoutMeasurement.height + contentOffset.y >=
+                contentSize.height - 20
+              ) {
+                this._onEndReached();
+              }
+            }}
+            scrollEventThrottle={400}
           >
-            {squibs
-              .sort((a, b) => b.time_stamp - a.time_stamp)
-              .map((item, index) => (
-                <NewsItem
-                  key={index}
-                  text={item.text}
-                  img={
-                    Array.isArray(item.image)
+            {squibs.map((item, index) => (
+              <NewsItem
+                key={index}
+                text={item.text}
+                img={
+                  Array.isArray(item.image)
+                    ? item.image
+                    : typeof item.image === 'string'
+                    ? item.image.split(',')
+                    : []
+                }
+                video={
+                  item.video
+                    ? Array.isArray(item.video)
+                      ? item.video
+                      : [item.video]
+                    : undefined
+                }
+                name={item.user_name}
+                time={item.time_stamp.toString()}
+                userPhoto={item.user_photo}
+                userId={item.user_id}
+                onPress={() => {
+                  const data = {
+                    text: item.text,
+                    image: Array.isArray(item.image)
                       ? item.image
                       : typeof item.image === 'string'
                       ? item.image.split(',')
-                      : []
-                  }
-                  video={
-                    item.video
+                      : [],
+                    video: item.video
                       ? Array.isArray(item.video)
                         ? item.video
                         : [item.video]
-                      : undefined
-                  }
-                  name={item.user_name}
-                  time={item.time_stamp.toString()}
-                  onPress={() => {
-                    const data = {
-                      text: item.text,
-                      image: Array.isArray(item.image)
-                        ? item.image
-                        : typeof item.image === 'string'
-                        ? item.image.split(',')
-                        : [],
-                      video: item.video
-                        ? Array.isArray(item.video)
-                          ? item.video
-                          : [item.video]
-                        : undefined,
-                      user_id: item.user_id,
-                      post_id: item.post_id,
-                    };
-                    this.setState(prevState => ({ ...prevState, ...data }));
-                    navigation?.navigate('Squib', data);
-                  }}
-                  lat={item.lat}
-                  lon={item.lon}
-                  location={item.location}
-                  type={item.type}
-                />
-              ))}
+                      : undefined,
+                    user_id: item.user_id,
+                    post_id: item.post_id,
+                  };
+                  this.setState(prevState => ({ ...prevState, ...data }));
+                  navigation?.navigate('Squib', data);
+                }}
+                lat={item.lat}
+                lon={item.lon}
+                location={item.location}
+                type={item.type}
+              />
+            ))}
+            {loadingMore && (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Text>Loading more...</Text>
+              </View>
+            )}
           </ScrollView>
         ) : (
           <ScrollView
@@ -259,6 +351,17 @@ export default class NewsPage extends Component<Props, State> {
                 tintColor="#44C1AF"
               />
             }
+            onScroll={({ nativeEvent }) => {
+              const { layoutMeasurement, contentOffset, contentSize } =
+                nativeEvent;
+              if (
+                layoutMeasurement.height + contentOffset.y >=
+                contentSize.height - 20
+              ) {
+                this._onEndReached();
+              }
+            }}
+            scrollEventThrottle={400}
           >
             <View style={{ height: '100%' }}>
               <Text style={styles.pullToRefreshText}>Pull to refresh</Text>

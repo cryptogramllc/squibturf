@@ -56,9 +56,6 @@ export default class ProfileCompletion extends Component<Props, State> {
     const { navigation, route } = this.props;
     const userData = route?.params?.userData;
 
-    console.log('ProfileCompletion - userData received:', userData);
-    console.log('ProfileCompletion - props:', this.props);
-
     if (!firstName.trim() || !lastName.trim()) {
       Alert.alert(
         'Profile Incomplete',
@@ -74,7 +71,6 @@ export default class ProfileCompletion extends Component<Props, State> {
 
     // Ensure userData exists
     if (!userData) {
-      console.log('ProfileCompletion - userData is undefined!');
       Alert.alert('Error', 'User data not found. Please try logging in again.');
       return;
     }
@@ -94,25 +90,13 @@ export default class ProfileCompletion extends Component<Props, State> {
         profileCompleted: true,
       };
 
-      // Save to AsyncStorage
-      console.log(
-        'ProfileCompletion - saving to AsyncStorage:',
-        completeUserData
-      );
       await AsyncStorage.setItem('userInfo', JSON.stringify(completeUserData));
 
       // Send to backend API
-      console.log('Sending profile data to backend:', completeUserData);
       const apiResponse = await this.api.sendProfile(completeUserData);
-      console.log('API response:', apiResponse);
 
-      // Navigate to main app
-      console.log(
-        'ProfileCompletion - navigating to News with completed profile'
-      );
       navigation?.navigate('News');
     } catch (error) {
-      console.log('Error completing profile:', error);
       Alert.alert('Error', 'Failed to complete profile. Please try again.');
     } finally {
       this.setState({ isLoading: false });

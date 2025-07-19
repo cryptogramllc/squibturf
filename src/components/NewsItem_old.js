@@ -18,7 +18,6 @@ const NewsItem = ({ img, text, name, time, onPress }) => {
                     {
                         (img && img.length > 0) &&
                         img.map((image, key) => {
-                            console.log('image', image);
                             return (
                                 image && <Image
                                     key={key}
