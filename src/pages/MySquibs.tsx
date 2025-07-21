@@ -198,7 +198,7 @@ export default class MySquibs extends Component<Props, State> {
           }}
           scrollEventThrottle={400}
         >
-          {squibs.length > 0 &&
+          {squibs.length > 0 ? (
             squibs.map(item => (
               <View key={item.uuid} style={{ position: 'relative' }}>
                 <NewsItem
@@ -247,7 +247,48 @@ export default class MySquibs extends Component<Props, State> {
                   type={item.type}
                 />
               </View>
-            ))}
+            ))
+          ) : (
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+                paddingTop: 100,
+              }}
+            >
+              <Icon
+                name="pencil"
+                style={{ marginBottom: 20 }}
+                color={'#44C1AF'}
+                size={80}
+              />
+              <Text
+                style={{
+                  color: '#44C1AF',
+                  fontSize: 24,
+                  fontWeight: 'bold',
+                  marginBottom: 15,
+                  textAlign: 'center',
+                }}
+              >
+                No Posts Yet
+              </Text>
+              <Text
+                style={{
+                  color: '#666',
+                  fontSize: 16,
+                  textAlign: 'center',
+                  marginBottom: 10,
+                  paddingHorizontal: 30,
+                  lineHeight: 22,
+                }}
+              >
+                You haven't created any squibs yet. Tap the camera button to
+                share your first post!
+              </Text>
+            </View>
+          )}
           {loadingMore && (
             <View style={{ padding: 20, alignItems: 'center' }}>
               <Text>Loading more...</Text>

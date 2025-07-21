@@ -30,14 +30,18 @@ interface AppState {
   tracking: boolean;
   data?: {} | null;
   showProfileAfterEdit: boolean;
+  currentTab: string;
 }
 
-interface HomeProps {}
+interface HomeProps {
+  onTabChange?: (tab: string) => void;
+}
 
 interface HomeState {
   showCreateSquib: boolean;
   data?: {} | null;
   refreshTrigger: number;
+  currentTab: string;
 }
 
 const Stack = createStackNavigator();
@@ -70,9 +74,19 @@ export class Home extends Component<HomeProps, HomeState> {
     this.state = {
       showCreateSquib: false,
       refreshTrigger: 0,
+      currentTab: 'Turf',
     };
     this.api = new SquibApi();
   }
+
+  // Method to update parent's currentTab state
+  updateParentTab = (tab: string) => {
+    this.setState({ currentTab: tab });
+    // Update parent App component's state
+    if (this.props.onTabChange) {
+      this.props.onTabChange(tab);
+    }
+  };
 
   render() {
     const Icon: any = FontAwesome;
@@ -81,6 +95,7 @@ export class Home extends Component<HomeProps, HomeState> {
         <Tab.Navigator
           screenOptions={{
             tabBarActiveTintColor: '#000',
+            headerShown: false,
           }}
         >
           <Tab.Screen
@@ -97,6 +112,11 @@ export class Home extends Component<HomeProps, HomeState> {
                   size={30}
                 />
               ),
+            }}
+            listeners={{
+              focus: () => {
+                this.updateParentTab('Turf');
+              },
             }}
           />
           <Tab.Screen
@@ -150,6 +170,11 @@ export class Home extends Component<HomeProps, HomeState> {
                 />
               ),
             }}
+            listeners={{
+              focus: () => {
+                this.updateParentTab('My Squibs');
+              },
+            }}
           />
         </Tab.Navigator>
         <ModalItem show={this.state.showCreateSquib}>
@@ -182,6 +207,7 @@ export default class App extends Component<AppProps, AppState> {
       pdata: {},
       tracking: false,
       showProfileAfterEdit: false,
+      currentTab: 'Turf',
     };
   }
 
@@ -206,6 +232,11 @@ export default class App extends Component<AppProps, AppState> {
     }
   }
 
+  // Handle tab changes from Home component
+  handleTabChange = (tab: string) => {
+    this.setState({ currentTab: tab });
+  };
+
   render() {
     const { tracking } = this.state;
     const Icon: any = FontAwesome;
@@ -221,9 +252,11 @@ export default class App extends Component<AppProps, AppState> {
             />
             <Stack.Screen
               name="News"
-              component={Home}
+              component={(props: any) => (
+                <Home {...props} onTabChange={this.handleTabChange} />
+              )}
               options={{
-                title: '',
+                title: this.state.currentTab === 'Turf' ? 'Turf' : 'My Squibs',
                 headerStyle: {
                   backgroundColor: '#44C1AF',
                 },

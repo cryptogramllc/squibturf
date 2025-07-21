@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "48152852824",
+    "firebase_url": "https://squibturf-5b534.firebaseio.com",
+    "project_id": "squibturf-5b534",
+    "storage_bucket": "squibturf-5b534.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:48152852824:android:74d2ce9e8ad64e1c47cd2d",
+        "android_client_info": {
+          "package_name": "com.squibturf"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "48152852824-f3j6ns6ho65ahk8t3765rl66holi6kdd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.squibturf",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "48152852824-qgqsrc1plnpj04jt1kbfkqdo6ii5aioh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCni1AFbOzHKBKQWsEh0I-VHLHWmPzHwCk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "48152852824-enum2aqv62f3iha3612cqd7pve5le9c6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "48152852824-rf6201o92gsokd470rqvph429v6tq9u1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.squibturf.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

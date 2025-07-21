@@ -47,6 +47,9 @@ interface State {
   loading: boolean;
   lastKey: any;
   loadingMore: boolean;
+  locationPermissionDenied: boolean;
+  hasError: boolean;
+  errorMessage: string;
 }
 
 export default class NewsPage extends Component<Props, State> {
@@ -62,6 +65,9 @@ export default class NewsPage extends Component<Props, State> {
       loading: false,
       lastKey: null,
       loadingMore: false,
+      locationPermissionDenied: false,
+      hasError: false,
+      errorMessage: '',
     };
   }
 
@@ -70,7 +76,6 @@ export default class NewsPage extends Component<Props, State> {
 
     // Add focus listener to refresh data when screen comes into focus
     const unsubscribe = this.props.navigation?.addListener('focus', () => {
-      console.log('NewsPage - focus event triggered, refreshing data');
       this._getData(null, false); // Refresh, don't append
     });
 
@@ -86,7 +91,6 @@ export default class NewsPage extends Component<Props, State> {
       prevProps.refreshTrigger !== this.props.refreshTrigger &&
       this.props.refreshTrigger
     ) {
-      console.log('NewsPage - refreshTrigger changed, refreshing data');
       this._getData(null, false); // Refresh, don't append
     }
   }
@@ -101,7 +105,6 @@ export default class NewsPage extends Component<Props, State> {
     }
 
     if (!permission) {
-      console.log('Unsupported platform for location permission');
       return false;
     }
 
@@ -112,9 +115,6 @@ export default class NewsPage extends Component<Props, State> {
     };
 
     const granted = await request(permission, rationale);
-
-    console.log('Permission granted:', granted);
-
     return granted === RESULTS.GRANTED;
   }
 
@@ -141,11 +141,13 @@ export default class NewsPage extends Component<Props, State> {
   };
 
   async _getData(lastKey = null, append = false) {
-    console.log('=== NewsPage _getData called ===');
-    console.log('lastKey:', lastKey);
-    console.log('append:', append);
-
     try {
+      this.setState({
+        hasError: false,
+        errorMessage: '',
+        locationPermissionDenied: false,
+      });
+
       const granted = await this._getLocationPermissions();
       if (granted) {
         try {
@@ -157,17 +159,8 @@ export default class NewsPage extends Component<Props, State> {
             lastKey,
             10
           ); // Always use limit 10
-          console.log('API response data:', data);
-          console.log('Data.Items length:', data?.Items?.length);
 
           if (data && data.Items) {
-            console.log('Setting squibs with', data.Items.length, 'items');
-            console.log(
-              'Current squibs count before update:',
-              this.state.squibs.length
-            );
-            console.log('Append mode:', append);
-
             this.setState(prevState => {
               let newSquibs = append
                 ? [...prevState.squibs, ...data.Items]
@@ -180,38 +173,44 @@ export default class NewsPage extends Component<Props, State> {
                 return dateB - dateA;
               });
 
-              console.log('New squibs count after update:', newSquibs.length);
-              console.log('New lastKey:', data.LastEvaluatedKey || null);
-
               return {
                 squibs: newSquibs,
                 lastKey: data.LastEvaluatedKey || null,
                 refreshing: false,
                 loadingMore: false,
+                hasError: false,
+                errorMessage: '',
               };
             });
           } else {
-            console.log('No data.Items found, setting empty array');
             this.setState({
               squibs: append ? this.state.squibs : [],
               refreshing: false,
               loadingMore: false,
+              hasError: false,
+              errorMessage: '',
             });
           }
         } catch (error) {
-          console.log('geolocation or API error', error);
+          console.log('Error getting location or data:', error);
           this.setState({
             squibs: append ? this.state.squibs : [],
             refreshing: false,
             loadingMore: false,
+            hasError: true,
+            errorMessage:
+              'Unable to load content. Please check your connection and try again.',
           });
         }
       } else {
-        console.log('permission not granted');
+        // Location permission denied - show helpful message
         this.setState({
           squibs: append ? this.state.squibs : [],
           refreshing: false,
           loadingMore: false,
+          locationPermissionDenied: true,
+          hasError: false,
+          errorMessage: '',
         });
       }
     } catch (error) {
@@ -220,12 +219,13 @@ export default class NewsPage extends Component<Props, State> {
         squibs: append ? this.state.squibs : [],
         refreshing: false,
         loadingMore: false,
+        hasError: true,
+        errorMessage: 'Something went wrong. Please try again.',
       });
     }
   }
 
   _onRefresh = () => {
-    console.log('=== Pull to refresh triggered ===');
     this.setState({ refreshing: true, lastKey: null }, () =>
       this._getData(null, false)
     );
@@ -233,37 +233,95 @@ export default class NewsPage extends Component<Props, State> {
 
   _onEndReached = () => {
     const { lastKey, loadingMore } = this.state;
-    console.log('=== onEndReached called ===');
-    console.log('lastKey:', lastKey);
-    console.log('loadingMore:', loadingMore);
 
     if (lastKey && !loadingMore) {
-      console.log('Loading more data...');
       this.setState({ loadingMore: true }, () => this._getData(lastKey, true));
     } else {
-      console.log('Skipping load more - no lastKey or already loading');
     }
   };
 
   render() {
-    const { squibs, refreshing, loading, loadingMore } = this.state;
+    const {
+      squibs,
+      refreshing,
+      loading,
+      loadingMore,
+      locationPermissionDenied,
+      hasError,
+      errorMessage,
+    } = this.state;
     const { navigation } = this.props;
     const Icon: any = FontAwesome;
     return (
-      <View>
+      <View style={{ flex: 1 }}>
         <StatusBar backgroundColor="blue" barStyle="light-content" />
         {loading ? (
           <View
             style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={styles.pullToRefreshText}>Loading Squibs...</Text>
+            <Text style={styles.loadingText}>Loading Squibs...</Text>
             <Icon
               name="spinner"
-              style={styles.downArrowIcon}
+              style={styles.loadingIcon}
               color={'#44C1AF'}
               size={30}
             />
           </View>
+        ) : locationPermissionDenied ? (
+          <ScrollView
+            contentContainerStyle={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={this._onRefresh.bind(this)}
+                tintColor="#44C1AF"
+              />
+            }
+          >
+            <Icon
+              name="map-marker"
+              style={styles.permissionIcon}
+              color={'#44C1AF'}
+              size={80}
+            />
+            <Text style={styles.permissionTitle}>Location Access Required</Text>
+            <Text style={styles.permissionText}>
+              SquibTurf needs location access to show you nearby posts. Please
+              enable location permissions in Settings.
+            </Text>
+            <Text style={styles.permissionSubtext}>
+              Pull down to refresh once permissions are granted
+            </Text>
+          </ScrollView>
+        ) : hasError ? (
+          <ScrollView
+            contentContainerStyle={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={this._onRefresh.bind(this)}
+                tintColor="#44C1AF"
+              />
+            }
+          >
+            <Icon
+              name="exclamation-triangle"
+              style={styles.errorIcon}
+              color={'#FF6B6B'}
+              size={80}
+            />
+            <Text style={styles.errorTitle}>Oops! Something went wrong</Text>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+            <Text style={styles.errorSubtext}>Pull down to try again</Text>
+          </ScrollView>
         ) : squibs.length > 0 ? (
           <ScrollView
             contentContainerStyle={{
@@ -363,23 +421,27 @@ export default class NewsPage extends Component<Props, State> {
             }}
             scrollEventThrottle={400}
           >
-            <View style={{ height: '100%' }}>
-              <Text style={styles.pullToRefreshText}>Pull to refresh</Text>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
               <Icon
-                name="long-arrow-down"
-                style={styles.downArrowIcon}
-                color={'#44C1AF'}
-                size={30}
-              />
-              <Text style={styles.noSquibsText}>
-                No Squibs in your area. Make a new Post
-              </Text>
-              <Icon
-                name="flag"
-                style={styles.flagIcon}
+                name="plus-circle"
+                style={styles.emptyIcon}
                 color={'#44C1AF'}
                 size={80}
               />
+              <Text style={styles.emptyTitle}>Be the First!</Text>
+              <Text style={styles.emptyText}>
+                No posts in your area yet. Create the first squib and start
+                sharing your experiences!
+              </Text>
+              <Text style={styles.emptySubtext}>
+                Pull down to refresh or tap the camera button to post
+              </Text>
             </View>
           </ScrollView>
         )}
@@ -421,5 +483,86 @@ const styles = StyleSheet.create({
     top: '50%',
     left: '50%',
     marginLeft: -40,
+  },
+  loadingText: {
+    color: '#44C1AF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  loadingIcon: {
+    marginTop: 10,
+  },
+  permissionIcon: {
+    marginBottom: 20,
+  },
+  permissionTitle: {
+    color: '#44C1AF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  permissionText: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 30,
+    lineHeight: 22,
+  },
+  permissionSubtext: {
+    color: '#44C1AF',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  errorIcon: {
+    marginBottom: 20,
+  },
+  errorTitle: {
+    color: '#FF6B6B',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 30,
+    lineHeight: 22,
+  },
+  errorSubtext: {
+    color: '#44C1AF',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  emptyIcon: {
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    color: '#44C1AF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  emptyText: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 30,
+    lineHeight: 22,
+  },
+  emptySubtext: {
+    color: '#44C1AF',
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
