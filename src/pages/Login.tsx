@@ -6,7 +6,14 @@ import {
 } from '@react-native-google-signin/google-signin';
 import { jwtDecode } from 'jwt-decode';
 import React, { Component } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import UUID from 'react-native-uuid';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { clearAllProfileCache } from '../components/NewsItem';
@@ -177,6 +184,10 @@ export default class Login extends Component<
       // Clear all caches when a new user logs in
       clearAllProfileCache();
 
+      // Clear all user squibs caches to prevent data leakage
+      const api = new SquibApi();
+      await api.clearAllCaches();
+
       // Clear ALL AsyncStorage data to ensure clean state
       await AsyncStorage.clear();
       console.log('🔐 LOGIN: Cleared all AsyncStorage data');
@@ -322,13 +333,15 @@ export default class Login extends Component<
             marginTop: 120,
           }}
         >
-          <TouchableOpacity
-            style={styles.greenPill}
-            onPress={this._onAppleButtonPress}
-          >
-            <FontAwesome name="apple" size={24} color="#fff" />
-            <Text style={styles.greenPillText}>Sign in with Apple</Text>
-          </TouchableOpacity>
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={styles.greenPill}
+              onPress={this._onAppleButtonPress}
+            >
+              <FontAwesome name="apple" size={24} color="#fff" />
+              <Text style={styles.greenPillText}>Sign in with Apple</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.greenPill}
             onPress={this._signIn}

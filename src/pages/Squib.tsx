@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { Component } from 'react';
 import {
   Alert,
@@ -77,11 +78,17 @@ export default class Squib extends Component<Props, State> {
   };
 
   sendComment = async () => {
+    // Get current user info from AsyncStorage
+    const userInfo = await AsyncStorage.getItem('userInfo');
+    const currentUser = userInfo ? JSON.parse(userInfo) : null;
+
     const newComment = {
-      user_id: '74e212fa-e12e-4679-b5b9-a4e15ec0f231',
-      avatar: 'https://cdn3.whatculture.com/images/2013/09/peter-griffin.jpg',
+      user_id: currentUser?.uuid || 'unknown',
+      avatar:
+        currentUser?.photo ||
+        'https://cdn3.whatculture.com/images/2013/09/peter-griffin.jpg',
       comment: this.state.comment!,
-      name: 'Peter Griffin',
+      name: currentUser?.name || 'Unknown User',
     };
 
     if (this.state.data) {

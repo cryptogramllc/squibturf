@@ -217,6 +217,10 @@ export default class Register extends Component<
       // Clear profile cache
       clearAllProfileCache();
 
+      // Clear all user squibs caches to prevent data leakage
+      const api = new SquibApi();
+      await api.clearAllCaches();
+
       // Navigate to main app
       this.props.navigation?.navigate('News');
     } catch (error) {

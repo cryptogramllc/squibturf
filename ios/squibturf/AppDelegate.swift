@@ -2,6 +2,7 @@ import UIKit
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
+import AppTrackingTransparency
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -28,6 +29,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       in: window,
       launchOptions: launchOptions
     )
+
+    // Request App Tracking Transparency permission
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+      if #available(iOS 14.5, *) {
+        ATTrackingManager.requestTrackingAuthorization { status in
+          switch status {
+          case .authorized:
+            print("App Tracking Transparency: Authorized")
+          case .denied:
+            print("App Tracking Transparency: Denied")
+          case .notDetermined:
+            print("App Tracking Transparency: Not Determined")
+          case .restricted:
+            print("App Tracking Transparency: Restricted")
+          @unknown default:
+            print("App Tracking Transparency: Unknown")
+          }
+        }
+      }
+    }
 
     return true
   }

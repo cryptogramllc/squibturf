@@ -15,7 +15,7 @@ export const configureGoogleSignIn = () => {
       'profile',
     ],
     webClientId:
-      '48152852824-rf6201o92gsokd470rqvph429v6tq9u1.apps.googleusercontent.com',
+      '48152852824-qgqsrc1plnpj04jt1kbfkqdo6ii5aioh.apps.googleusercontent.com',
     offlineAccess: true,
     hostedDomain: '',
     forceCodeForRefreshToken: true,

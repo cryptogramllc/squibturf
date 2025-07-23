@@ -23,6 +23,16 @@ function SquibAPI() {
   const accessKey = Config.ACCESS_KEY;
   const secretKey = Config.SECRET_KEY;
   // Debug logging to check if Config values are loaded
+  console.log('🔍 AWS DEBUG: ACCESS_KEY loaded:', accessKey ? 'YES' : 'NO');
+  console.log('🔍 AWS DEBUG: SECRET_KEY loaded:', secretKey ? 'YES' : 'NO');
+  console.log(
+    '🔍 AWS DEBUG: ACCESS_KEY length:',
+    accessKey ? accessKey.length : 0
+  );
+  console.log(
+    '🔍 AWS DEBUG: SECRET_KEY length:',
+    secretKey ? secretKey.length : 0
+  );
 
   this.s3Options = {
     keyPrefix: '/',
@@ -133,6 +143,7 @@ SquibAPI.prototype.postNewSquib = async function (images, caption, lon, lat) {
 
     // Invalidate user cache after posting new squib (local squibs are not cached)
     await this.invalidateUserCache();
+    await this.clearUserSquibsCache();
 
     return response;
   } catch (err) {
@@ -432,6 +443,65 @@ SquibAPI.prototype.invalidateUserCache = async function () {
     console.log('[SquibAPI] Invalidated cache for user:', userId);
   } catch (error) {
     console.log('[SquibAPI] Error invalidating user cache:', error);
+  }
+};
+
+// Clear user squibs cache for current user
+SquibAPI.prototype.clearUserSquibsCache = async function () {
+  try {
+    const user = await AsyncStorage.getItem('userInfo');
+    if (user) {
+      const pdata = JSON.parse(user);
+      const userId = pdata.uuid;
+      const cacheKey = `user_squibs_${userId}`;
+      await AsyncStorage.removeItem(cacheKey);
+      console.log('Cleared user squibs cache for user:', userId);
+    }
+  } catch (error) {
+    console.log('Error clearing user squibs cache:', error);
+  }
+};
+
+// Clear ALL user squibs caches (for logout)
+SquibAPI.prototype.clearAllUserSquibsCaches = async function () {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const userSquibsKeys = keys.filter(key => key.startsWith('user_squibs_'));
+    const locationKeys = keys.filter(key => key.startsWith('squibs_'));
+
+    const keysToRemove = [...userSquibsKeys, ...locationKeys];
+
+    if (keysToRemove.length > 0) {
+      await AsyncStorage.multiRemove(keysToRemove);
+      console.log('Cleared all user squibs and location caches:', keysToRemove);
+    }
+  } catch (error) {
+    console.log('Error clearing all user squibs caches:', error);
+  }
+};
+
+// Comprehensive cache clearing function for logout
+SquibAPI.prototype.clearAllCaches = async function () {
+  try {
+    // Clear AsyncStorage caches
+    const keys = await AsyncStorage.getAllKeys();
+    const cacheKeys = keys.filter(
+      key =>
+        key.startsWith('user_squibs_') ||
+        key.startsWith('squibs_') ||
+        key.startsWith('profile_')
+    );
+
+    if (cacheKeys.length > 0) {
+      await AsyncStorage.multiRemove(cacheKeys);
+      console.log('Cleared AsyncStorage caches:', cacheKeys);
+    }
+
+    // Clear userInfo (this should be done separately)
+    await AsyncStorage.removeItem('userInfo');
+    console.log('Cleared userInfo from AsyncStorage');
+  } catch (error) {
+    console.log('Error clearing all caches:', error);
   }
 };
 

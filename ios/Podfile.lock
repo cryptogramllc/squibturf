@@ -1751,7 +1751,7 @@ PODS:
     - Yoga
   - react-native-image-resizer (1.4.5):
     - React-Core
-  - react-native-safe-area-context (5.5.1):
+  - react-native-safe-area-context (5.5.2):
     - React-Core
   - react-native-video (6.16.1):
     - boost
@@ -2473,7 +2473,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - RNScreens (4.11.1):
+  - RNScreens (4.13.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2533,11 +2533,11 @@ PODS:
     - SocketRocket
     - Yoga
   - SocketRocket (0.7.1)
-  - VisionCamera (4.7.0):
-    - VisionCamera/Core (= 4.7.0)
-    - VisionCamera/React (= 4.7.0)
-  - VisionCamera/Core (4.7.0)
-  - VisionCamera/React (4.7.0):
+  - VisionCamera (4.7.1):
+    - VisionCamera/Core (= 4.7.1)
+    - VisionCamera/React (= 4.7.1)
+  - VisionCamera/Core (4.7.1)
+  - VisionCamera/React (4.7.1):
     - React-Core
   - Yoga (0.0.0)
 
@@ -2880,7 +2880,7 @@ SPEC CHECKSUMS:
   react-native-get-random-values: d16467cf726c618e9c7a8c3c39c31faa2244bbba
   react-native-image-picker: 3d04db95b47c6b45d433523f20085ffdd0a934ab
   react-native-image-resizer: 17b2d73c030975b6543395c7e7368bc8774c5efa
-  react-native-safe-area-context: 827032edf27079702cbd006f11dc79451a2d744b
+  react-native-safe-area-context: 0f7bf11598f9a61b7ceac8dc3f59ef98697e99e1
   react-native-video: 20f407dd7f27cd74fce2b4cf6847e148e1b758e9
   React-NativeModulesApple: 983f3483ef0a3446b56d490f09d579fba2442e17
   React-oscompat: 114036cd8f064558c9c1a0c04fc9ae5e1453706a
@@ -2919,10 +2919,10 @@ SPEC CHECKSUMS:
   RNGoogleSignin: 0354d0a70bc32e081824f625faf26efcad12574e
   RNPermissions: 767b6d6dee04ba8ef2f7867ae7a882f365984051
   RNReanimated: 7e273cda8e13a7efef02a4942f9680b7b5262ca3
-  RNScreens: 6f26eb84a9475b21246f1a515923837771ff9be3
+  RNScreens: 64b35b601916a7a61339a7cd6bd5db4ab218a1be
   RNVectorIcons: 3406e3096f8858508d293d066c6850e97d5497d2
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  VisionCamera: c5c07db74721d37f4c9f8331ad1f8da7b2539995
+  VisionCamera: 9a8f98ae344fe5d148f84bb45829f9e4caab9d2f
   Yoga: daa1e4de4b971b977b23bc842aaa3e135324f1f3
 
 PODFILE CHECKSUM: fcceea0299ea853a7b8ed1663e0e79d82d983bd9

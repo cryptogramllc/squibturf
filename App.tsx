@@ -3,22 +3,27 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import React, { Component, createRef } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 
 import { clearAllProfileCache } from './src/components/NewsItem';
+import { configureGoogleSignIn } from './src/config/googleSignIn';
 import ModalItem from './src/modals/ModalItem';
 import Comments from './src/pages/Comments';
 import CreateSquib from './src/pages/CreateSquib';
+import CreateSquibADB from './src/pages/CreateSquibADB';
 import Login from './src/pages/Login';
 import MySquibs from './src/pages/MySquibs';
+import { clearMySquibsData } from './src/pages/MySquibsDataCache';
 import NewsPage from './src/pages/NewsPage';
+import { clearNewsPageData } from './src/pages/NewsPageDataCache';
 import Profile from './src/pages/Profile';
 import ProfileCompletion from './src/pages/ProfileCompletion';
 import ProfileEdit from './src/pages/ProfileEdit';
 import Squib from './src/pages/Squib';
-const SquibApi = require('./src/api/index');
+import NewsCache from './src/services/NewsCache';
+const SquibApi = require('./src/api');
 
 // Define types for props and state if necessary
 interface AppProps {}
@@ -129,7 +134,7 @@ export class Home extends Component<HomeProps, HomeState> {
                     backgroundColor: '#44C1AF',
                     height: 60,
                     width: 60,
-                    marginTop: 0,
+                    marginTop: -20, // Move button up so it's half on white space and half on gray background
                     borderRadius: 100,
                     borderWidth: 3,
                     borderColor: '#ccc',
@@ -178,18 +183,33 @@ export class Home extends Component<HomeProps, HomeState> {
           />
         </Tab.Navigator>
         <ModalItem show={this.state.showCreateSquib}>
-          <CreateSquib
-            close={(value: boolean) => {
-              this.setState({ showCreateSquib: !value });
-              this.setState({ data: {} });
-              // Trigger refresh of NewsPage when squib is posted
-              if (value) {
-                this.setState(prevState => ({
-                  refreshTrigger: prevState.refreshTrigger + 1,
-                }));
-              }
-            }}
-          />
+          {Platform.OS === 'android' ? (
+            <CreateSquibADB
+              close={(value: boolean) => {
+                this.setState({ showCreateSquib: !value });
+                this.setState({ data: {} });
+                // Trigger refresh of NewsPage when squib is posted
+                if (value) {
+                  this.setState(prevState => ({
+                    refreshTrigger: prevState.refreshTrigger + 1,
+                  }));
+                }
+              }}
+            />
+          ) : (
+            <CreateSquib
+              close={(value: boolean) => {
+                this.setState({ showCreateSquib: !value });
+                this.setState({ data: {} });
+                // Trigger refresh of NewsPage when squib is posted
+                if (value) {
+                  this.setState(prevState => ({
+                    refreshTrigger: prevState.refreshTrigger + 1,
+                  }));
+                }
+              }}
+            />
+          )}
         </ModalItem>
       </>
     );
@@ -212,12 +232,19 @@ export default class App extends Component<AppProps, AppState> {
   }
 
   async componentDidMount() {
+    // Configure Google Sign-In
+    configureGoogleSignIn();
+
     // Remove all trackingStatus and getTrackingStatus logic
     const user = await AsyncStorage.getItem('userInfo');
     if (user) {
       const pdata = JSON.parse(user);
       this.setState({ pdata });
       this.setState({ user_uuid: pdata.uuid });
+
+      // Clear any stale user squibs caches to prevent data leakage
+      const api = new SquibApi();
+      await api.clearAllCaches();
     }
 
     // Add focus listener to detect when returning from ProfileEdit
@@ -329,11 +356,39 @@ export default class App extends Component<AppProps, AppState> {
           <Profile
             navigation={this.navigationRef.current}
             userSessionReset={async () => {
+              console.log('🔄 Starting comprehensive cache clearing...');
+
               // Clear all profile caches when user signs out
               clearAllProfileCache();
+              console.log('✅ Cleared profile caches');
+
+              // Clear MySquibs data cache
+              clearMySquibsData();
+              console.log('✅ Cleared MySquibs data cache');
+
+              // Clear NewsPage data cache
+              clearNewsPageData();
+              console.log('✅ Cleared NewsPage data cache');
+
+              // Clear all AsyncStorage caches and userInfo
+              const api = new SquibApi();
+              await api.clearAllCaches();
+              console.log('✅ Cleared all AsyncStorage caches');
+
+              // Clear NewsCache singleton
+              try {
+                const newsCache = NewsCache.getInstance();
+                newsCache.clearCache();
+                console.log('✅ Cleared NewsCache singleton');
+              } catch (error) {
+                console.log('⚠️ Could not clear NewsCache:', error);
+              }
+
               this.setState({ user_uuid: null });
-              AsyncStorage.removeItem('userInfo');
+              console.log('✅ Cleared app state');
+
               await this.navigationRef.current?.navigate('Login');
+              console.log('✅ Navigated to Login');
             }}
             data={this.state.pdata}
             close={(value: boolean) => {

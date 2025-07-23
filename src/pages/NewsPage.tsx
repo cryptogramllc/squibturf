@@ -1,9 +1,11 @@
 import Geolocation from '@react-native-community/geolocation';
-import React, { Component } from 'react';
+import React from 'react';
 import {
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
   Platform,
   RefreshControl,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -18,6 +20,13 @@ import {
 } from 'react-native-permissions';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import NewsItem from '../components/NewsItem';
+import {
+  clearNewsPageData,
+  newsPageData,
+  newsPageLastKey,
+  setNewsPageData,
+} from './NewsPageDataCache';
+import { newsPageScrollY, setNewsPageScrollY } from './NewsPageScrollState';
 const SquibApi = require('../api/index');
 
 interface NewsItemData {
@@ -28,7 +37,7 @@ interface NewsItemData {
   user_id: string;
   post_id: string;
   time_stamp: number;
-  date_key?: number; // Epoch time for sorting
+  date_key?: number;
   lat?: number;
   lon?: number;
   location?: { city?: string; state?: string; country?: string };
@@ -37,8 +46,8 @@ interface NewsItemData {
 }
 
 interface Props {
-  navigation?: any; // Adjust navigation prop type as per your application
-  refreshTrigger?: number; // Trigger to refresh data
+  navigation?: any;
+  refreshTrigger?: number;
 }
 
 interface State {
@@ -50,11 +59,20 @@ interface State {
   locationPermissionDenied: boolean;
   hasError: boolean;
   errorMessage: string;
+  showScrollRestoreOverlay?: boolean;
 }
 
-export default class NewsPage extends Component<Props, State> {
+export default class NewsPage extends React.Component<Props, State> {
   private api: typeof SquibApi;
-  private scrollEndTimeout: NodeJS.Timeout | null = null;
+  private flatListRef = React.createRef<FlatList<NewsItemData>>();
+  private focusListener: any;
+  private needsScrollRestore = false;
+  private hasRestoredScroll = false;
+  private restoreInProgress = false;
+  private lastRestoreAttempt = 0;
+  private windowHeight = Dimensions.get('window').height;
+  private restoreTimeout: any = null;
+  private failsafeTimeout: any = null;
 
   constructor(props: Props) {
     super(props);
@@ -68,52 +86,80 @@ export default class NewsPage extends Component<Props, State> {
       locationPermissionDenied: false,
       hasError: false,
       errorMessage: '',
+      showScrollRestoreOverlay: false,
     };
   }
 
   async componentDidMount() {
-    this._getData(null, false); // Initial load, don't append
-
-    // Add focus listener to refresh data when screen comes into focus
-    const unsubscribe = this.props.navigation?.addListener('focus', () => {
-      this._getData(null, false); // Refresh, don't append
-    });
-
-    // Clean up listener on unmount
-    if (unsubscribe) {
-      this.componentWillUnmount = unsubscribe;
+    if (newsPageData.length > 0) {
+      this.setState({
+        squibs: newsPageData,
+        lastKey: newsPageLastKey,
+        showScrollRestoreOverlay: true,
+      });
+      this.restoreInProgress = true;
+      this.lastRestoreAttempt = newsPageScrollY;
+      // Failsafe: hide overlay after 2 seconds
+      this.failsafeTimeout = setTimeout(() => {
+        if (this.state.showScrollRestoreOverlay) {
+          this.setState({ showScrollRestoreOverlay: false });
+          this.restoreInProgress = false;
+        }
+      }, 2000);
+    } else {
+      this._getData(null, false);
     }
+    this.focusListener = this.props.navigation?.addListener('focus', () => {
+      if (this.flatListRef.current && this.state.squibs.length > 0) {
+        this.tryRestoreScroll();
+      }
+    });
   }
 
-  componentDidUpdate(prevProps: Props) {
-    // If refreshTrigger changed, refresh the data
+  tryRestoreScroll = () => {
+    if (
+      this.restoreInProgress &&
+      this.flatListRef.current &&
+      this.lastRestoreAttempt > 0
+    ) {
+      this.flatListRef.current.scrollToOffset({
+        offset: this.lastRestoreAttempt,
+        animated: false,
+      });
+    }
+  };
+
+  componentWillUnmount() {
+    if (this.focusListener) this.focusListener();
+    if (this.restoreTimeout) clearTimeout(this.restoreTimeout);
+    if (this.failsafeTimeout) clearTimeout(this.failsafeTimeout);
+  }
+
+  componentDidUpdate(prevProps: Props, prevState: State) {
     if (
       prevProps.refreshTrigger !== this.props.refreshTrigger &&
       this.props.refreshTrigger
     ) {
-      this._getData(null, false); // Refresh, don't append
+      this._getData(null, false);
     }
+    // Do not restore scroll here; wait for onContentSizeChange
   }
 
   async _getLocationPermissions() {
     let permission: Permission | undefined;
-
     if (Platform.OS === 'android') {
       permission = PERMISSIONS.ANDROID.ACCESS_COARSE_LOCATION;
     } else if (Platform.OS === 'ios') {
       permission = PERMISSIONS.IOS.LOCATION_WHEN_IN_USE;
     }
-
     if (!permission) {
       return false;
     }
-
     const rationale: Rationale = {
       title: 'DemoApp',
       message: 'DemoApp would like access to your location',
       buttonPositive: 'OK',
     };
-
     const granted = await request(permission, rationale);
     return granted === RESULTS.GRANTED;
   }
@@ -122,8 +168,7 @@ export default class NewsPage extends Component<Props, State> {
     return new Promise<{ lon: number; lat: number }>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Geolocation timeout'));
-      }, 5000); // 5 second timeout
-
+      }, 10000);
       Geolocation.getCurrentPosition(
         position => {
           clearTimeout(timeoutId);
@@ -132,10 +177,13 @@ export default class NewsPage extends Component<Props, State> {
         },
         error => {
           clearTimeout(timeoutId);
-          console.log('Error : ' + JSON.stringify(error));
           reject(error);
         },
-        { enableHighAccuracy: true, timeout: 3000, maximumAge: 1000 }
+        {
+          enableHighAccuracy: false,
+          timeout: 8000,
+          maximumAge: 60000,
+        }
       );
     });
   };
@@ -147,32 +195,28 @@ export default class NewsPage extends Component<Props, State> {
         errorMessage: '',
         locationPermissionDenied: false,
       });
-
       const granted = await this._getLocationPermissions();
       if (granted) {
         try {
-          const loc = await this._getCurrentPosition();
-          console.log('Location obtained:', loc);
+          let loc;
+          loc = await this._getCurrentPosition();
           const data = await this.api.getLocalSquibs(
             loc.lon,
             loc.lat,
             lastKey,
             10
-          ); // Always use limit 10
-
+          );
           if (data && data.Items) {
             this.setState(prevState => {
               let newSquibs = append
                 ? [...prevState.squibs, ...data.Items]
                 : data.Items;
-
-              // Sort by date_key in descending order (newest first)
               newSquibs.sort((a: NewsItemData, b: NewsItemData) => {
                 const dateA = a.date_key || a.time_stamp || 0;
                 const dateB = b.date_key || b.time_stamp || 0;
                 return dateB - dateA;
               });
-
+              setNewsPageData(newSquibs, data.LastEvaluatedKey || null);
               return {
                 squibs: newSquibs,
                 lastKey: data.LastEvaluatedKey || null,
@@ -183,6 +227,7 @@ export default class NewsPage extends Component<Props, State> {
               };
             });
           } else {
+            setNewsPageData(append ? this.state.squibs : [], null);
             this.setState({
               squibs: append ? this.state.squibs : [],
               refreshing: false,
@@ -191,19 +236,31 @@ export default class NewsPage extends Component<Props, State> {
               errorMessage: '',
             });
           }
-        } catch (error) {
-          console.log('Error getting location or data:', error);
+        } catch (error: any) {
+          const isLocationTimeout =
+            error.code === 3 || error.message?.includes('timeout');
+          const isNoLocationProvider =
+            error.code === 2 ||
+            error.message?.includes('No location provider available') ||
+            error.message?.includes('POSITION_UNAVAILABLE');
+          let errorMessage =
+            'Unable to load content. Please check your connection and try again.';
+          if (isLocationTimeout) {
+            errorMessage =
+              'Location request timed out. Please try again or check your GPS settings.';
+          } else if (isNoLocationProvider) {
+            errorMessage =
+              'Location services not available. Please enable GPS or try on a real device.';
+          }
           this.setState({
             squibs: append ? this.state.squibs : [],
             refreshing: false,
             loadingMore: false,
             hasError: true,
-            errorMessage:
-              'Unable to load content. Please check your connection and try again.',
+            errorMessage: errorMessage,
           });
         }
       } else {
-        // Location permission denied - show helpful message
         this.setState({
           squibs: append ? this.state.squibs : [],
           refreshing: false,
@@ -214,7 +271,6 @@ export default class NewsPage extends Component<Props, State> {
         });
       }
     } catch (error) {
-      console.log('Error in _getData:', error);
       this.setState({
         squibs: append ? this.state.squibs : [],
         refreshing: false,
@@ -226,6 +282,7 @@ export default class NewsPage extends Component<Props, State> {
   }
 
   _onRefresh = () => {
+    clearNewsPageData();
     this.setState({ refreshing: true, lastKey: null }, () =>
       this._getData(null, false)
     );
@@ -233,10 +290,8 @@ export default class NewsPage extends Component<Props, State> {
 
   _onEndReached = () => {
     const { lastKey, loadingMore } = this.state;
-
     if (lastKey && !loadingMore) {
       this.setState({ loadingMore: true }, () => this._getData(lastKey, true));
-    } else {
     }
   };
 
@@ -255,6 +310,23 @@ export default class NewsPage extends Component<Props, State> {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar backgroundColor="blue" barStyle="light-content" />
+        {this.state.showScrollRestoreOverlay && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 10,
+              backgroundColor: 'white',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <ActivityIndicator size="large" color="#44C1AF" />
+          </View>
+        )}
         {loading ? (
           <View
             style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
@@ -268,19 +340,8 @@ export default class NewsPage extends Component<Props, State> {
             />
           </View>
         ) : locationPermissionDenied ? (
-          <ScrollView
-            contentContainerStyle={{
-              flex: 1,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={this._onRefresh.bind(this)}
-                tintColor="#44C1AF"
-              />
-            }
+          <View
+            style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
           >
             <Icon
               name="map-marker"
@@ -296,21 +357,10 @@ export default class NewsPage extends Component<Props, State> {
             <Text style={styles.permissionSubtext}>
               Pull down to refresh once permissions are granted
             </Text>
-          </ScrollView>
+          </View>
         ) : hasError ? (
-          <ScrollView
-            contentContainerStyle={{
-              flex: 1,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={this._onRefresh.bind(this)}
-                tintColor="#44C1AF"
-              />
-            }
+          <View
+            style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
           >
             <Icon
               name="exclamation-triangle"
@@ -321,34 +371,14 @@ export default class NewsPage extends Component<Props, State> {
             <Text style={styles.errorTitle}>Oops! Something went wrong</Text>
             <Text style={styles.errorText}>{errorMessage}</Text>
             <Text style={styles.errorSubtext}>Pull down to try again</Text>
-          </ScrollView>
+          </View>
         ) : squibs.length > 0 ? (
-          <ScrollView
-            contentContainerStyle={{
-              backgroundColor: '#ddd',
-            }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={this._onRefresh.bind(this)}
-                tintColor="#44C1AF"
-              />
-            }
-            onScroll={({ nativeEvent }) => {
-              const { layoutMeasurement, contentOffset, contentSize } =
-                nativeEvent;
-              if (
-                layoutMeasurement.height + contentOffset.y >=
-                contentSize.height - 20
-              ) {
-                this._onEndReached();
-              }
-            }}
-            scrollEventThrottle={400}
-          >
-            {squibs.map((item, index) => (
+          <FlatList
+            ref={this.flatListRef}
+            data={squibs}
+            keyExtractor={(_, index) => index.toString()}
+            renderItem={({ item, index }) => (
               <NewsItem
-                key={index}
                 text={item.text}
                 img={
                   Array.isArray(item.image)
@@ -392,16 +422,7 @@ export default class NewsPage extends Component<Props, State> {
                 location={item.location}
                 type={item.type}
               />
-            ))}
-            {loadingMore && (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Text>Loading more...</Text>
-              </View>
             )}
-          </ScrollView>
-        ) : (
-          <ScrollView
-            contentContainerStyle={{ height: '100%', width: '100%' }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -409,41 +430,78 @@ export default class NewsPage extends Component<Props, State> {
                 tintColor="#44C1AF"
               />
             }
-            onScroll={({ nativeEvent }) => {
-              const { layoutMeasurement, contentOffset, contentSize } =
-                nativeEvent;
+            onScroll={e => setNewsPageScrollY(e.nativeEvent.contentOffset.y)}
+            scrollEventThrottle={16}
+            onEndReached={this._onEndReached}
+            onEndReachedThreshold={0.1}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text>Loading more...</Text>
+                </View>
+              ) : null
+            }
+            contentContainerStyle={{
+              backgroundColor: '#ddd',
+              paddingBottom: 100, // Add more padding to make white space longer
+            }}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            initialNumToRender={10}
+            onContentSizeChange={(w, h) => {
               if (
-                layoutMeasurement.height + contentOffset.y >=
-                contentSize.height - 20
+                this.restoreInProgress &&
+                this.flatListRef.current &&
+                this.lastRestoreAttempt > 0
               ) {
-                this._onEndReached();
+                if (h > this.lastRestoreAttempt + this.windowHeight) {
+                  this.flatListRef.current.scrollToOffset({
+                    offset: this.lastRestoreAttempt,
+                    animated: false,
+                  });
+                  this.restoreInProgress = false;
+                  if (this.restoreTimeout) clearTimeout(this.restoreTimeout);
+                  if (this.failsafeTimeout) clearTimeout(this.failsafeTimeout);
+                  this.setState({ showScrollRestoreOverlay: false });
+                } else {
+                  if (this.restoreTimeout) clearTimeout(this.restoreTimeout);
+                  this.restoreTimeout = setTimeout(() => {
+                    if (this.restoreInProgress && this.flatListRef.current) {
+                      this.flatListRef.current.scrollToOffset({
+                        offset: this.lastRestoreAttempt,
+                        animated: false,
+                      });
+                    }
+                  }, 100);
+                }
               }
             }}
-            scrollEventThrottle={400}
+          />
+        ) : (
+          <View
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingTop: 100,
+            }}
           >
-            <View
-              style={{
-                flex: 1,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
-              <Icon
-                name="plus-circle"
-                style={styles.emptyIcon}
-                color={'#44C1AF'}
-                size={80}
-              />
-              <Text style={styles.emptyTitle}>Be the First!</Text>
-              <Text style={styles.emptyText}>
-                No posts in your area yet. Create the first squib and start
-                sharing your experiences!
-              </Text>
-              <Text style={styles.emptySubtext}>
-                Pull down to refresh or tap the camera button to post
-              </Text>
-            </View>
-          </ScrollView>
+            <Icon
+              name="plus-circle"
+              style={styles.emptyIcon}
+              color={'#44C1AF'}
+              size={80}
+            />
+            <Text style={styles.emptyTitle}>Be the First!</Text>
+            <Text style={styles.emptyText}>
+              No posts in your area yet. Create the first squib and start
+              sharing your experiences!
+            </Text>
+            <Text style={styles.emptySubtext}>
+              Pull down to refresh or tap the camera button to post
+            </Text>
+          </View>
         )}
       </View>
     );

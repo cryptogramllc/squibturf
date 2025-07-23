@@ -7,7 +7,6 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +16,6 @@ import {
 import { RNCamera } from 'react-native-camera';
 import { launchImageLibrary, MediaType } from 'react-native-image-picker';
 import {
-  Permission,
   PERMISSIONS,
   Rationale,
   request,
@@ -155,6 +153,16 @@ export default class CreateSquib extends Component<
     }
   }
 
+  componentWillUnmount() {
+    // Cleanup to prevent memory leaks
+    if (this.recordingTimer) {
+      clearInterval(this.recordingTimer);
+      this.recordingTimer = null;
+    }
+    // Clear camera reference
+    this.camera = null;
+  }
+
   _renderItem = ({ item }: { item: string; index: number }) => (
     <View style={styles.slide}>
       <Image
@@ -210,26 +218,33 @@ export default class CreateSquib extends Component<
   };
 
   takePicture = async () => {
-    const { pictures, latestVideo } = this.state;
-    // Only allow up to 5 total media assets
-    const videoCount =
-      pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length +
-      (latestVideo ? 1 : 0);
-    const totalCount = pictures.length + (latestVideo ? 1 : 0);
-    if (totalCount >= 5) return;
-    if (this.camera && !this.state.takingPic && !this.state.isRecording) {
-      // Request camera permission first
-      const hasPermission = await this.requestCameraPermission();
-      if (!hasPermission) {
-        Alert.alert(
-          'Permission Denied',
-          'Camera permission is required to take photos.'
-        );
-        return;
-      }
+    console.log('🔴 takePicture called');
 
-      this.setState({ takingPic: true, processingType: 'photo' });
+    const { pictures, latestVideo } = this.state;
+    const totalCount = pictures.length + (latestVideo ? 1 : 0);
+    if (totalCount >= 5) {
+      console.log('🔴 Max media count reached');
+      return;
+    }
+
+    // Request camera permission first
+    const hasPermission = await this.requestCameraPermission();
+    if (!hasPermission) {
+      Alert.alert(
+        'Permission Denied',
+        'Camera permission is required to take photos.'
+      );
+      return;
+    }
+
+    console.log('🔴 Setting takingPic to true');
+    this.setState({ takingPic: true, processingType: 'photo' });
+
+    if (this.camera && !this.state.isRecording) {
       try {
+        // Add a small delay to ensure camera is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         const data = await this.camera.takePictureAsync({
           quality: 0.1,
           fixOrientation: true,
@@ -238,6 +253,7 @@ export default class CreateSquib extends Component<
         });
         this.setState({ latestPic: data.uri });
       } catch (err: any) {
+        console.error('Error taking picture:', err);
         Alert.alert(
           'Error',
           'Failed to take picture: ' + (err?.message || err)
@@ -245,6 +261,9 @@ export default class CreateSquib extends Component<
       } finally {
         this.setState({ takingPic: false, processingType: null });
       }
+    } else {
+      console.log('🔴 No camera available or recording in progress');
+      this.setState({ takingPic: false, processingType: null });
     }
   };
 
@@ -258,16 +277,18 @@ export default class CreateSquib extends Component<
     // Only allow up to 5 total media assets
     const totalCount = pictures.length + (latestVideo ? 1 : 0);
     if (totalCount >= 5) return;
-    if (this.camera && !this.state.isRecording && !this.state.takingPic) {
-      const hasPermission = await this.requestCameraPermission();
-      if (!hasPermission) {
-        Alert.alert(
-          'Permission Denied',
-          'Camera permission is required to record videos.'
-        );
-        return;
-      }
 
+    const hasPermission = await this.requestCameraPermission();
+    if (!hasPermission) {
+      Alert.alert(
+        'Permission Denied',
+        'Camera permission is required to record videos.'
+      );
+      return;
+    }
+
+    if (this.camera && !this.state.isRecording && !this.state.takingPic) {
+      // For iOS with RNCamera
       try {
         this.setState({
           isRecording: true,
@@ -317,12 +338,21 @@ export default class CreateSquib extends Component<
         console.log('Video URI:', videoData.uri);
         this.setState({ latestVideo: videoData.uri });
       } catch (err: any) {
+        console.error('Error starting video recording:', err);
         Alert.alert(
           'Error',
           'Failed to start recording: ' + (err?.message || err)
         );
-        this.setState({ isRecording: false });
+      } finally {
+        this.setState({
+          isRecording: false,
+          recordingProgress: 0,
+          recordingTime: 0,
+          processingType: null,
+        });
       }
+    } else {
+      console.log('🔴 No camera available or recording in progress');
     }
   };
 
@@ -362,18 +392,7 @@ export default class CreateSquib extends Component<
   };
 
   async requestCameraPermission(): Promise<boolean> {
-    let permission: Permission | undefined;
-
-    if (Platform.OS === 'android') {
-      permission = PERMISSIONS.ANDROID.CAMERA;
-    } else if (Platform.OS === 'ios') {
-      permission = PERMISSIONS.IOS.CAMERA;
-    }
-
-    if (!permission) {
-      console.log('Unsupported platform for camera permission');
-      return false;
-    }
+    const permission = PERMISSIONS.IOS.CAMERA;
 
     const rationale: Rationale = {
       title: 'Camera Permission',
@@ -388,18 +407,7 @@ export default class CreateSquib extends Component<
   }
 
   async requestPhotoLibraryPermission(): Promise<boolean> {
-    let permission: Permission | undefined;
-
-    if (Platform.OS === 'android') {
-      permission = PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE;
-    } else if (Platform.OS === 'ios') {
-      permission = PERMISSIONS.IOS.PHOTO_LIBRARY;
-    }
-
-    if (!permission) {
-      console.log('Unsupported platform for photo library permission');
-      return false;
-    }
+    const permission = PERMISSIONS.IOS.PHOTO_LIBRARY;
 
     const rationale: Rationale = {
       title: 'Photo Library Permission',
@@ -420,10 +428,8 @@ export default class CreateSquib extends Component<
     console.log('🚀 ~ pickImageFromLibrary= ~ remainingSlots:', remainingSlots);
 
     if (remainingSlots === 0) {
-      this.setState({
-        camera: false,
-        squib: true,
-      });
+      Alert.alert('Limit Reached', 'You can only add up to 5 media items.');
+      return;
     }
 
     const options = {
@@ -434,10 +440,13 @@ export default class CreateSquib extends Component<
     };
 
     launchImageLibrary(options, response => {
+      console.log('🚀 Image picker response:', response);
+
       if (response.didCancel) {
         console.log('User cancelled image picker');
         return;
       }
+
       if (response.errorCode) {
         if (response.errorCode === 'permission') {
           Alert.alert(
@@ -460,20 +469,40 @@ export default class CreateSquib extends Component<
         }
         return;
       }
+
       if (response.assets && response.assets.length > 0) {
         const selectedImages = response.assets
-          .map(asset => asset.uri)
+          .map(asset => {
+            // Handle iOS file:// URLs properly
+            let uri = asset.uri;
+            if (uri && !uri.startsWith('file://')) {
+              uri = `file://${uri}`;
+            }
+            return uri;
+          })
           .filter(uri => uri) as string[];
+
+        console.log('🚀 Selected images:', selectedImages);
 
         // Only add images up to the 5-item limit
         const imagesToAdd = selectedImages.slice(0, remainingSlots);
-        const pictures = Array.isArray(this.state.pictures)
-          ? this.state.pictures.concat(imagesToAdd)
+        const newPictures = Array.isArray(this.state.pictures)
+          ? [...this.state.pictures, ...imagesToAdd]
           : imagesToAdd;
 
-        this.setState({
-          pictures,
-        });
+        console.log('🚀 New pictures array:', newPictures);
+
+        this.setState(
+          {
+            pictures: newPictures,
+            // Keep user on camera page - don't force navigation to squib mode
+          },
+          () => {
+            console.log('🚀 State updated - pictures:', this.state.pictures);
+            console.log('🚀 State updated - camera:', this.state.camera);
+            console.log('🚀 State updated - squib:', this.state.squib);
+          }
+        );
       }
     });
   };
@@ -547,6 +576,11 @@ export default class CreateSquib extends Component<
       processingType,
       latestVideo,
     } = this.state;
+
+    console.log('🔴 RENDER - latestPic:', latestPic);
+    console.log('🔴 RENDER - latestPic type:', typeof latestPic);
+    console.log('🔴 RENDER - latestPic truthy:', !!latestPic);
+
     const Icon: any = FontAwesome;
     const videoTaken =
       pictures.filter(p => p.endsWith('.mp4') || p.endsWith('.mov')).length >
@@ -620,6 +654,14 @@ export default class CreateSquib extends Component<
               >
                 {(() => {
                   const currentAsset = pictures[this.state.currentImage];
+                  console.log(
+                    '🔴 RENDER - currentImage:',
+                    this.state.currentImage
+                  );
+                  console.log('🔴 RENDER - pictures array:', pictures);
+                  console.log('🔴 RENDER - currentAsset:', currentAsset);
+                  console.log('🔴 RENDER - pictures.length:', pictures.length);
+
                   if (
                     currentAsset &&
                     (currentAsset.endsWith('.mp4') ||
@@ -643,8 +685,24 @@ export default class CreateSquib extends Component<
                         resizeMode="cover"
                       />
                     );
+                  } else {
+                    console.log('🔴 RENDER - No currentAsset to display');
+                    return (
+                      <View
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          backgroundColor: '#44C1AF',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: 'white', fontSize: 18 }}>
+                          No image selected
+                        </Text>
+                      </View>
+                    );
                   }
-                  return null;
                 })()}
                 {/* Media Counter */}
                 {this.state.pictures.length > 1 && (
@@ -697,7 +755,7 @@ export default class CreateSquib extends Component<
               </TouchableOpacity>
               {/* Permanent Text Input Area */}
               <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior="padding"
                 style={{
                   position: 'absolute',
                   left: 0,
@@ -705,7 +763,7 @@ export default class CreateSquib extends Component<
                   bottom: 0,
                   zIndex: 999,
                 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                keyboardVerticalOffset={0}
               >
                 <Animated.View
                   style={{
@@ -766,7 +824,7 @@ export default class CreateSquib extends Component<
                 </Animated.View>
               </KeyboardAvoidingView>
               <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior="padding"
                 style={{
                   position: 'absolute',
                   left: 0,
@@ -774,7 +832,7 @@ export default class CreateSquib extends Component<
                   bottom: 0,
                   zIndex: 999,
                 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                keyboardVerticalOffset={0}
               >
                 <Animated.View
                   style={{
@@ -1205,22 +1263,24 @@ export default class CreateSquib extends Component<
                   )}
                 </View>
               )}
-              <RNCamera
-                style={{ flex: 1, alignItems: 'center' }}
-                ref={ref => {
-                  this.camera = ref;
-                }}
-                captureAudio={false}
-                type={
-                  backCam
-                    ? RNCamera.Constants.Type.back
-                    : RNCamera.Constants.Type.front
-                }
-                useNativeZoom={true}
-                maxZoom={5}
-                onRecordingStart={this.onRecordingStart}
-                onRecordingEnd={this.onRecordingEnd}
-              />
+              {!latestPic && (
+                <RNCamera
+                  style={{ flex: 1, alignItems: 'center' }}
+                  ref={ref => {
+                    this.camera = ref;
+                  }}
+                  captureAudio={false}
+                  type={
+                    this.state.backCam
+                      ? RNCamera.Constants.Type.back
+                      : RNCamera.Constants.Type.front
+                  }
+                  useNativeZoom={true}
+                  maxZoom={5}
+                  onRecordingStart={this.onRecordingStart}
+                  onRecordingEnd={this.onRecordingEnd}
+                />
+              )}
               {showZoomHint && (
                 <View
                   style={{

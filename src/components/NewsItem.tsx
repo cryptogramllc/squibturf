@@ -1,8 +1,10 @@
-import moment from 'moment'; // Use ES6 import for moment
+import moment from 'moment';
 import React, { useEffect, useState } from 'react';
 import {
   ActionSheetIOS,
+  Alert,
   Image,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -62,14 +64,90 @@ const NewsItem: React.FC<NewsItemProps> = ({
   userPhoto,
   userId,
 }) => {
-  const [locationInfo] = useState<{
-    city?: string;
-    state?: string;
-    country?: string;
-  } | null>(location || null);
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(
+  const [profilePicture, setProfilePicture] = useState<string | null>(
     userPhoto || null
   );
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  // Helper function to show action sheet with multiple options
+  const showActionSheet = () => {
+    if (Platform.OS === 'ios') {
+      const options = [
+        { title: 'Cancel', action: () => {}, style: 'cancel' as const },
+        {
+          title: 'Delete',
+          action: () => {
+            // Show confirmation dialog
+            Alert.alert(
+              'Delete Squib',
+              'Are you sure you want to delete this squib?',
+              [
+                { text: 'No', onPress: () => {}, style: 'cancel' },
+                { text: 'Yes', onPress: onMenuPress, style: 'destructive' },
+              ]
+            );
+          },
+          style: 'destructive' as const,
+        },
+        // Future options can be easily added here:
+        // { title: 'Report', action: () => handleReport(), style: 'default' as const },
+        // { title: 'Edit', action: () => handleEdit(), style: 'default' as const },
+      ];
+
+      const actionSheetOptions = {
+        title: 'Squib Options',
+        options: options.map(opt => opt.title),
+        cancelButtonIndex: 0,
+        destructiveButtonIndex: 1,
+      };
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        actionSheetOptions,
+        (buttonIndex: number) => {
+          if (
+            buttonIndex > 0 &&
+            options[buttonIndex] &&
+            typeof options[buttonIndex].action === 'function'
+          ) {
+            options[buttonIndex].action();
+          }
+        }
+      );
+    } else {
+      // Android: Toggle dropdown menu
+      setShowDropdown(!showDropdown);
+    }
+  };
+
+  const handleDelete = () => {
+    setShowDropdown(false);
+    // Call the parent's onMenuPress directly - it will handle its own confirmation dialog
+    if (onMenuPress) {
+      onMenuPress();
+    }
+  };
+
+  // Future menu options can be easily added here
+  const menuOptions = [
+    {
+      title: 'Delete',
+      icon: 'trash',
+      action: handleDelete,
+      style: 'destructive',
+    },
+    // { title: 'Report', icon: 'flag', action: () => handleReport(), style: 'default' },
+    // { title: 'Edit', icon: 'edit', action: () => handleEdit(), style: 'default' },
+  ];
+
+  // Close dropdown when clicking outside
+  const handlePressOutside = () => {
+    if (showDropdown) {
+      setShowDropdown(false);
+    } else {
+      // If dropdown is not open, call the original onPress
+      onPress();
+    }
+  };
 
   // Calculate total media count and width
   const totalMedia = (img?.length || 0) + (video?.length || 0);
@@ -98,7 +176,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
             'photo:',
             cached.photo
           );
-          setProfilePhoto(cached.photo);
+          setProfilePicture(cached.photo);
           return;
         }
 
@@ -125,7 +203,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
               'photo:',
               photoUrl
             );
-            setProfilePhoto(photoUrl);
+            setProfilePicture(photoUrl);
           } else {
             console.log(
               '🖼️ NewsItem: No photo found in API response for user:',
@@ -168,23 +246,25 @@ const NewsItem: React.FC<NewsItemProps> = ({
   }, [userId, name]);
 
   return (
-    <TouchableOpacity onPress={onPress} style={styles.newsItem}>
+    <TouchableOpacity onPress={handlePressOutside} style={styles.newsItem}>
       <View style={styles.container}>
         {/* User Info Section - LinkedIn Style */}
         <View style={styles.userInfoContainer}>
           <View style={styles.userInfoLeft}>
-            {profilePhoto ? (
+            {profilePicture ? (
               <Image
                 source={{
                   uri: (() => {
                     const photoUrl =
-                      profilePhoto &&
-                      profilePhoto.includes('squibturf-images.s3.amazonaws.com')
-                        ? profilePhoto.replace(
+                      profilePicture &&
+                      profilePicture.includes(
+                        'squibturf-images.s3.amazonaws.com'
+                      )
+                        ? profilePicture.replace(
                             'squibturf-images.s3.amazonaws.com',
                             'squibturf-images.s3.us-east-1.amazonaws.com'
                           )
-                        : profilePhoto;
+                        : profilePicture;
                     // Ensure the URL has the correct format with double slash
                     const finalPhotoUrl =
                       photoUrl &&
@@ -225,7 +305,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
                     error.nativeEvent
                   );
                   // Fallback to teal circle if image fails to load
-                  setProfilePhoto(null);
+                  setProfilePicture(null);
                 }}
               />
             ) : (
@@ -257,27 +337,46 @@ const NewsItem: React.FC<NewsItemProps> = ({
           {onMenuPress && (
             <TouchableOpacity
               style={styles.menuButton}
-              onPress={() => {
-                ActionSheetIOS.showActionSheetWithOptions(
-                  {
-                    title: 'Squib Options',
-                    options: ['Cancel', 'Delete'],
-                    cancelButtonIndex: 0,
-                    destructiveButtonIndex: 1,
-                  },
-                  buttonIndex => {
-                    if (buttonIndex === 1) {
-                      onMenuPress();
-                    }
-                  }
-                );
-              }}
+              onPress={showActionSheet}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <FontAwesome name="ellipsis-h" size={20} color="#666" />
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Android Dropdown Menu */}
+        {Platform.OS === 'android' && showDropdown && (
+          <View style={styles.dropdownContainer}>
+            {menuOptions.map((option, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.dropdownItem,
+                  option.style === 'destructive' &&
+                    styles.dropdownItemDestructive,
+                ]}
+                onPress={option.action}
+                activeOpacity={0.7}
+              >
+                <FontAwesome
+                  name={option.icon as any}
+                  size={16}
+                  color={option.style === 'destructive' ? '#ff4444' : '#666'}
+                />
+                <Text
+                  style={[
+                    styles.dropdownItemText,
+                    option.style === 'destructive' &&
+                      styles.dropdownItemTextDestructive,
+                  ]}
+                >
+                  {option.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Squib Text Section */}
         {text && <Text style={styles.newsItem_text}>{text}</Text>}
@@ -365,7 +464,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
         ) : null}
 
         {/* Location Section */}
-        {locationInfo && (
+        {location && (
           <View style={styles.locationOverlay}>
             <View style={styles.locationContainer}>
               <FontAwesome
@@ -375,7 +474,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
                 style={styles.locationIcon}
               />
               <Text style={styles.locationText}>
-                {[locationInfo.city, locationInfo.state, locationInfo.country]
+                {[location.city, location.state, location.country]
                   .filter(Boolean)
                   .join(', ')}
               </Text>
@@ -518,6 +617,40 @@ const styles = StyleSheet.create({
     padding: 8,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  dropdownContainer: {
+    position: 'absolute',
+    top: 50, // Position below the header
+    right: 10,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
+    zIndex: 1000,
+    minWidth: 120,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#eee',
+  },
+  dropdownItemDestructive: {
+    borderBottomColor: '#ffebee',
+  },
+  dropdownItemText: {
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  dropdownItemTextDestructive: {
+    color: '#ff4444',
   },
 });
 
