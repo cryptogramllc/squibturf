@@ -8,6 +8,7 @@ import {
   RefreshControl,
   StatusBar,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
@@ -51,6 +52,9 @@ interface State {
     uuid?: string;
   } | null;
   showScrollRestoreOverlay?: boolean;
+  authError: boolean;
+  authErrorMessage: string;
+  isLoading: boolean;
 }
 
 export default class MySquibs extends React.Component<Props, State> {
@@ -74,6 +78,9 @@ export default class MySquibs extends React.Component<Props, State> {
       loadingMore: false,
       currentUser: null,
       showScrollRestoreOverlay: false,
+      authError: false,
+      authErrorMessage: '',
+      isLoading: false,
     };
   }
 
@@ -130,17 +137,80 @@ export default class MySquibs extends React.Component<Props, State> {
       const user = await AsyncStorage.getItem('userInfo');
       if (user) {
         const userData = JSON.parse(user);
-        this.setState({ currentUser: userData });
+
+        // Validate that we have the required user data
+        if (userData && userData.uuid && userData.email) {
+          console.log('🔐 MySquibs: Valid user data loaded:', {
+            uuid: userData.uuid,
+            email: userData.email,
+          });
+          this.setState({
+            currentUser: userData,
+            authError: false,
+            authErrorMessage: '',
+          });
+          return true;
+        } else {
+          console.log(
+            '🔐 MySquibs: Invalid user data - missing required fields:',
+            userData
+          );
+          this.setState({
+            currentUser: null,
+            authError: true,
+            authErrorMessage: 'Invalid user session. Please log in again.',
+          });
+          return false;
+        }
+      } else {
+        console.log('🔐 MySquibs: No user data found in AsyncStorage');
+        this.setState({
+          currentUser: null,
+          authError: true,
+          authErrorMessage: 'No user session found. Please log in.',
+        });
+        return false;
       }
     } catch (error) {
-      // ignore
+      console.log('🔐 MySquibs: Error loading user data:', error);
+      this.setState({
+        currentUser: null,
+        authError: true,
+        authErrorMessage: 'Error loading user session. Please log in again.',
+      });
+      return false;
     }
   }
 
   async _getData(lastKey = null, append = false) {
+    // First check if we have valid authentication
+    const isAuthenticated = await this._loadCurrentUser();
+
+    if (!isAuthenticated) {
+      console.log('🔐 MySquibs: Authentication failed, cannot fetch data');
+      this.setState({
+        refreshing: false,
+        loadingMore: false,
+        isLoading: false,
+      });
+      return;
+    }
+
+    this.setState({ isLoading: true });
+
     try {
+      console.log(
+        '🔐 MySquibs: Fetching user squibs with UUID:',
+        this.state.currentUser?.uuid
+      );
       const data = await this.api.getUserSquibs(lastKey, 10, 0);
+
       if (data && data.Items) {
+        console.log(
+          '🔐 MySquibs: Successfully fetched',
+          data.Items.length,
+          'squibs'
+        );
         this.setState(prevState => {
           let newSquibs = append
             ? [...prevState.squibs, ...data.Items]
@@ -151,24 +221,50 @@ export default class MySquibs extends React.Component<Props, State> {
             return dateB - dateA;
           });
           setMySquibsData(newSquibs, data.LastEvaluatedKey || null);
-          if (append && lastKey) this.loadedKeys.add(lastKey); // Only add after successful pagination
+          if (append && lastKey) this.loadedKeys.add(lastKey);
           return {
             squibs: newSquibs,
             lastKey: data.LastEvaluatedKey || null,
             refreshing: false,
             loadingMore: false,
+            isLoading: false,
+            authError: false,
+            authErrorMessage: '',
           };
         });
       } else {
+        console.log('🔐 MySquibs: No data returned from API');
         setMySquibsData(append ? this.state.squibs : [], null);
         this.setState({
           squibs: append ? this.state.squibs : [],
           refreshing: false,
           loadingMore: false,
+          isLoading: false,
+          authError: false,
+          authErrorMessage: '',
         });
       }
-    } catch (error) {
-      this.setState({ refreshing: false, loadingMore: false });
+    } catch (error: any) {
+      console.log('🔐 MySquibs: Error fetching data:', error);
+
+      // Check if it's an authentication error
+      if (error.response && error.response.status === 401) {
+        this.setState({
+          refreshing: false,
+          loadingMore: false,
+          isLoading: false,
+          authError: true,
+          authErrorMessage: 'Session expired. Please log in again.',
+        });
+      } else {
+        this.setState({
+          refreshing: false,
+          loadingMore: false,
+          isLoading: false,
+          authError: true,
+          authErrorMessage: 'Failed to load your squibs. Please try again.',
+        });
+      }
     }
   }
 
@@ -192,6 +288,9 @@ export default class MySquibs extends React.Component<Props, State> {
       loadingMore,
       currentUser,
       showScrollRestoreOverlay,
+      authError,
+      authErrorMessage,
+      isLoading,
     } = this.state;
     const { navigation } = this.props;
     const Icon: any = FontAwesome;
@@ -215,7 +314,84 @@ export default class MySquibs extends React.Component<Props, State> {
             <ActivityIndicator size="large" color="#44C1AF" />
           </View>
         )}
-        {squibs.length > 0 ? (
+        {authError ? (
+          <View
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 20,
+              backgroundColor: '#f8f9fa',
+            }}
+          >
+            <Icon name="exclamation-triangle" size={48} color="#dc3545" />
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: 'bold',
+                color: '#dc3545',
+                textAlign: 'center',
+                marginTop: 16,
+                marginBottom: 8,
+              }}
+            >
+              Authentication Error
+            </Text>
+            <Text
+              style={{
+                fontSize: 14,
+                color: '#6c757d',
+                textAlign: 'center',
+                marginBottom: 20,
+                lineHeight: 20,
+              }}
+            >
+              {authErrorMessage}
+            </Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#44C1AF',
+                paddingHorizontal: 24,
+                paddingVertical: 12,
+                borderRadius: 8,
+              }}
+              onPress={() => {
+                this.setState({ authError: false, authErrorMessage: '' });
+                this._getData();
+              }}
+            >
+              <Text
+                style={{
+                  color: 'white',
+                  fontSize: 16,
+                  fontWeight: '600',
+                }}
+              >
+                Try Again
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : isLoading && squibs.length === 0 ? (
+          <View
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: '#f8f9fa',
+            }}
+          >
+            <ActivityIndicator size="large" color="#44C1AF" />
+            <Text
+              style={{
+                fontSize: 16,
+                color: '#6c757d',
+                marginTop: 16,
+              }}
+            >
+              Loading your squibs...
+            </Text>
+          </View>
+        ) : squibs.length > 0 ? (
           <FlatList
             ref={this.flatListRef}
             data={squibs}

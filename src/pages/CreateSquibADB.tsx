@@ -1511,6 +1511,17 @@ export default class CreateSquibADB extends Component<
                   <TouchableOpacity
                     style={{ position: 'absolute', bottom: 45, right: 45 }}
                     onPress={() => {
+                      console.log(
+                        '🔍 ANDROID LOCATION DEBUG: Camera flip button pressed'
+                      );
+                      console.log(
+                        '🔍 ANDROID LOCATION DEBUG: Current backCam state:',
+                        backCam
+                      );
+                      console.log(
+                        '🔍 ANDROID LOCATION DEBUG: Changing backCam to:',
+                        !backCam
+                      );
                       this.setState({ backCam: !backCam });
                     }}
                   >

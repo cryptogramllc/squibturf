@@ -159,9 +159,18 @@ SquibAPI.prototype.getLocalSquibs = async function (
   limit = 10,
   page = 0
 ) {
+  console.log('🌍 API: getLocalSquibs called with params:', {
+    lon: lon,
+    lat: lat,
+    lastKey: lastKey,
+    limit: limit,
+    page: page,
+  });
+
   // Extract page number from lastKey if it exists
   if (lastKey && typeof lastKey === 'object' && lastKey.page !== undefined) {
     page = lastKey.page;
+    console.log('🌍 API: Extracted page from lastKey:', page);
   }
 
   const data = {
@@ -171,35 +180,74 @@ SquibAPI.prototype.getLocalSquibs = async function (
     page: page,
   };
 
+  console.log('🌍 API: Sending request to /local-squibs with data:', data);
+
   try {
+    console.log('🌍 API: Making POST request to /local-squibs...');
     const response = await this.api.post('/local-squibs', data, {
       headers: {
         'Content-Type': 'application/json',
       },
     });
+    console.log('🌍 API: Received response from /local-squibs:', {
+      status: response.status,
+      statusText: response.statusText,
+      hasData: !!response.data,
+      hasBody: !!response.data?.body,
+    });
 
     let parsed;
     if (typeof response.data.body === 'string') {
+      console.log('🌍 API: Parsing string response body...');
       parsed = JSON.parse(response.data.body);
     } else {
+      console.log('🌍 API: Using object response body directly...');
       parsed = response.data.body;
     }
 
+    console.log('🌍 API: Parsed response data:', {
+      hasParsed: !!parsed,
+      parsedType: typeof parsed,
+      hasItems: !!parsed?.Items,
+      itemsCount: parsed?.Items?.length || 0,
+      hasLastKey: !!parsed?.LastEvaluatedKey,
+      hasTotalItems: !!parsed?.TotalItems,
+      hasCurrentPage: !!parsed?.CurrentPage,
+    });
+
     // Defensive: If parsed is not an object or doesn't have Items, return empty array
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.Items)) {
+      console.log('🌍 API: Invalid response format, returning empty array');
       return {
         Items: [],
         LastEvaluatedKey: null,
       };
     }
 
-    return {
+    const result = {
       Items: parsed.Items,
       LastEvaluatedKey: parsed.LastEvaluatedKey || null,
       TotalItems: parsed.TotalItems || parsed.Items.length,
       CurrentPage: parsed.CurrentPage || page,
     };
+
+    console.log('🌍 API: Returning successful result:', {
+      itemsCount: result.Items.length,
+      hasLastKey: !!result.LastEvaluatedKey,
+      totalItems: result.TotalItems,
+      currentPage: result.CurrentPage,
+    });
+
+    return result;
   } catch (error) {
+    console.log('🌍 API: Error in getLocalSquibs:', {
+      error: error.message,
+      errorType: error.constructor.name,
+      hasResponse: !!error.response,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data,
+    });
+
     return {
       Items: [],
       LastEvaluatedKey: null,
@@ -212,9 +260,34 @@ SquibAPI.prototype.getUserSquibs = async function (
   limit = 10,
   page = 0
 ) {
+  console.log('👤 API: getUserSquibs called with params:', {
+    lastKey: lastKey,
+    limit: limit,
+    page: page,
+  });
+
+  // Validate user authentication first
   const user = await AsyncStorage.getItem('userInfo');
-  const pdata = JSON.parse(user);
+  if (!user) {
+    console.log('🔐 API: No userInfo found in AsyncStorage');
+    throw new Error('No user session found');
+  }
+
+  let pdata;
+  try {
+    pdata = JSON.parse(user);
+  } catch (error) {
+    console.log('🔐 API: Error parsing userInfo:', error);
+    throw new Error('Invalid user session data');
+  }
+
+  if (!pdata || !pdata.uuid) {
+    console.log('🔐 API: Invalid user data - missing UUID:', pdata);
+    throw new Error('Invalid user session - missing UUID');
+  }
+
   const userId = pdata.uuid;
+  console.log('🔐 API: Using user UUID for getUserSquibs:', userId);
 
   // Create cache key for user squibs
   const cacheKey = `user_squibs_${userId}`;
@@ -265,41 +338,70 @@ SquibAPI.prototype.getUserSquibs = async function (
     page: 0, // Always fetch page 0 to get all items
   };
 
+  console.log('👤 API: Sending request to /user-squibs with data:', data);
+
   try {
+    console.log('👤 API: Making POST request to /user-squibs...');
     const response = await this.api.post('/user-squibs', data, {
       headers: {
         'Content-Type': 'application/json',
       },
     });
+    console.log('👤 API: Received response from /user-squibs:', {
+      status: response.status,
+      statusText: response.statusText,
+      hasData: !!response.data,
+      hasBody: !!response.data?.body,
+    });
 
     let parsed;
     if (typeof response.data.body === 'string') {
+      console.log('👤 API: Parsing string response body...');
       parsed = JSON.parse(response.data.body);
     } else {
+      console.log('👤 API: Using object response body directly...');
       parsed = response.data.body;
     }
 
+    console.log('👤 API: Parsed response data:', {
+      hasParsed: !!parsed,
+      parsedType: typeof parsed,
+      hasItems: !!parsed?.Items,
+      itemsCount: parsed?.Items?.length || 0,
+      hasLastKey: !!parsed?.LastEvaluatedKey,
+      hasTotalItems: !!parsed?.TotalItems,
+      hasCurrentPage: !!parsed?.CurrentPage,
+    });
+
     // Defensive: If parsed is not an object or doesn't have Items, return empty array
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.Items)) {
+      console.log('👤 API: Invalid response format, returning empty array');
       return {
         Items: [],
         LastEvaluatedKey: null,
       };
     }
 
+    console.log('👤 API: Caching user squibs data for user:', userId);
     // Cache all items for this user in AsyncStorage
     const cacheData = {
       items: parsed.Items,
       timestamp: Date.now(),
     };
     await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
+    console.log(
+      '👤 API: Cached',
+      parsed.Items.length,
+      'items for user:',
+      userId
+    );
 
     // Return first page from cached data
     const startIndex = 0;
     const endIndex = limit;
     const pageItems = parsed.Items.slice(startIndex, endIndex);
 
-    return {
+    const result = {
       Items: pageItems,
       LastEvaluatedKey:
         parsed.Items.length > endIndex
@@ -308,8 +410,24 @@ SquibAPI.prototype.getUserSquibs = async function (
       TotalItems: parsed.Items.length,
       CurrentPage: 0,
     };
+
+    console.log('👤 API: Returning successful result:', {
+      itemsCount: result.Items.length,
+      hasLastKey: !!result.LastEvaluatedKey,
+      totalItems: result.TotalItems,
+      currentPage: result.CurrentPage,
+    });
+
+    return result;
   } catch (error) {
-    console.log('Error in getUserSquibs:', error);
+    console.log('👤 API: Error in getUserSquibs:', {
+      error: error.message,
+      errorType: error.constructor.name,
+      hasResponse: !!error.response,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data,
+    });
+
     return {
       Items: [],
       LastEvaluatedKey: null,
@@ -483,7 +601,7 @@ SquibAPI.prototype.clearAllUserSquibsCaches = async function () {
 // Comprehensive cache clearing function for logout
 SquibAPI.prototype.clearAllCaches = async function () {
   try {
-    // Clear AsyncStorage caches
+    // Clear AsyncStorage caches ONLY (not user session data)
     const keys = await AsyncStorage.getAllKeys();
     const cacheKeys = keys.filter(
       key =>
@@ -497,11 +615,20 @@ SquibAPI.prototype.clearAllCaches = async function () {
       console.log('Cleared AsyncStorage caches:', cacheKeys);
     }
 
-    // Clear userInfo (this should be done separately)
-    await AsyncStorage.removeItem('userInfo');
-    console.log('Cleared userInfo from AsyncStorage');
+    // DO NOT clear userInfo here - that should be done separately for logout
+    console.log('Cleared caches but preserved user session data');
   } catch (error) {
-    console.log('Error clearing all caches:', error);
+    console.log('Error clearing caches:', error);
+  }
+};
+
+// Method to clear user session data (for logout)
+SquibAPI.prototype.clearUserSession = async function () {
+  try {
+    await AsyncStorage.removeItem('userInfo');
+    console.log('Cleared user session data from AsyncStorage');
+  } catch (error) {
+    console.log('Error clearing user session:', error);
   }
 };
 

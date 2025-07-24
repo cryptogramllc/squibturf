@@ -188,9 +188,9 @@ export default class Login extends Component<
       const api = new SquibApi();
       await api.clearAllCaches();
 
-      // Clear ALL AsyncStorage data to ensure clean state
-      await AsyncStorage.clear();
-      console.log('🔐 LOGIN: Cleared all AsyncStorage data');
+      // Clear user session data to ensure clean state
+      await api.clearUserSession();
+      console.log('🔐 LOGIN: Cleared user session data for fresh login');
 
       const response = await this.api.sendProfile(info);
       console.log('🔐 LOGIN: API response:', response?.data);

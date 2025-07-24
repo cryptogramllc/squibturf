@@ -370,10 +370,14 @@ export default class App extends Component<AppProps, AppState> {
               clearNewsPageData();
               console.log('✅ Cleared NewsPage data cache');
 
-              // Clear all AsyncStorage caches and userInfo
+              // Clear all AsyncStorage caches
               const api = new SquibApi();
               await api.clearAllCaches();
               console.log('✅ Cleared all AsyncStorage caches');
+
+              // Clear user session data separately
+              await api.clearUserSession();
+              console.log('✅ Cleared user session data');
 
               // Clear NewsCache singleton
               try {
