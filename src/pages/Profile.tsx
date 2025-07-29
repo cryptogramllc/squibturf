@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { Component } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   StyleSheet,
@@ -179,6 +180,95 @@ export default class Profile extends Component<Props, State> {
 
   refreshProfile = async () => {
     await this.loadUserData();
+  };
+
+  handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone and will permanently remove all your data including your profile, posts, and account information.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: this.confirmDeleteAccount,
+        },
+      ]
+    );
+  };
+
+  confirmDeleteAccount = () => {
+    Alert.alert(
+      'Final Confirmation',
+      'This is your final warning. Deleting your account will:\n\n• Permanently remove your profile\n• Delete all your posts\n• Remove all your data from our servers\n• This action cannot be undone\n\nAre you absolutely sure you want to proceed?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Delete My Account',
+          style: 'destructive',
+          onPress: this.performAccountDeletion,
+        },
+      ]
+    );
+  };
+
+  performAccountDeletion = async () => {
+    try {
+      const { userData } = this.state;
+
+      if (!userData || !userData.email) {
+        Alert.alert('Error', 'Unable to delete account. User data not found.');
+        return;
+      }
+
+      // Show loading state
+      Alert.alert(
+        'Deleting Account',
+        'Please wait while we delete your account...',
+        [],
+        { cancelable: false }
+      );
+
+      // Call the API to delete the account
+      const response = await this.api.deleteAccount(userData.email);
+
+      if (response && response.status === 200) {
+        // Clear all local data
+        await this.props.userSessionReset();
+
+        Alert.alert(
+          'Account Deleted',
+          'Your account has been successfully deleted. Thank you for using SquibTurf.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                this.props.close(true);
+              },
+            },
+          ]
+        );
+      } else {
+        throw new Error('Failed to delete account');
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      Alert.alert(
+        'Error',
+        'Failed to delete your account. Please try again or contact support if the problem persists.',
+        [
+          {
+            text: 'OK',
+          },
+        ]
+      );
+    }
   };
 
   render() {
@@ -446,6 +536,26 @@ export default class Profile extends Component<Props, State> {
                 style={{
                   paddingVertical: 12,
                   alignItems: 'center',
+                  marginBottom: 15,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: '#007AFF',
+                    textAlign: 'center',
+                  }}
+                >
+                  Sign Out
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={this.handleDeleteAccount}
+                style={{
+                  paddingVertical: 12,
+                  alignItems: 'center',
                 }}
               >
                 <Text
@@ -456,7 +566,7 @@ export default class Profile extends Component<Props, State> {
                     textAlign: 'center',
                   }}
                 >
-                  Sign Out
+                  Delete Account
                 </Text>
               </TouchableOpacity>
             </View>

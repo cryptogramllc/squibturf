@@ -41,7 +41,10 @@ interface State {
   fadeAnimation: Animated.Value;
   imageLoadError: boolean;
   imageLoading: boolean;
-  aspectRatio: number | null; // <-- add aspectRatio to state
+  aspectRatio: number | null;
+  videoError: boolean;
+  videoLoading: boolean;
+  shouldRenderVideo: boolean;
 }
 
 export default class Squib extends Component<Props, State> {
@@ -58,13 +61,26 @@ export default class Squib extends Component<Props, State> {
       imageLoadError: false,
       imageLoading: true,
       aspectRatio: null, // <-- initialize aspectRatio
+      videoError: false,
+      videoLoading: true,
+      shouldRenderVideo: false,
     };
   }
 
   async componentDidMount() {
     const data = await this.api.getComment();
     data && this.setState({ data });
-    this.setImageAspectRatio();
+
+    // Delay video rendering to prevent immediate crashes
+    setTimeout(() => {
+      this.setState({ shouldRenderVideo: true });
+    }, 1000);
+  }
+
+  componentWillUnmount() {
+    // Clean up any video resources
+    console.log('Squib component unmounting - cleaning up video resources');
+    this.setState({ shouldRenderVideo: false });
   }
 
   componentDidUpdate(prevProps: Props, prevState: State) {
@@ -174,6 +190,83 @@ export default class Squib extends Component<Props, State> {
     }
   };
 
+  // Video lifecycle methods
+  handleVideoLoadStart = () => {
+    console.log('Video load started');
+    this.setState({ videoLoading: true, videoError: false });
+  };
+
+  handleVideoLoad = () => {
+    console.log('Video loaded successfully');
+    this.setState({ videoLoading: false, videoError: false });
+  };
+
+  handleVideoError = (error: any) => {
+    console.error('Video error:', error);
+    this.setState({ videoError: true, videoLoading: false });
+  };
+
+  handleVideoEnd = () => {
+    console.log('Video ended - restarting');
+    // For videos with repeat=true, this shouldn't be called, but just in case
+    // we can handle it gracefully
+  };
+
+  handleVideoProgress = (data: any) => {
+    // Optional: track video progress
+    console.log(
+      'Video progress:',
+      data.currentTime,
+      '/',
+      data.playableDuration
+    );
+  };
+
+  handleVideoBuffer = (data: any) => {
+    console.log('Video buffering:', data.currentBuffer);
+  };
+
+  handleVideoReadyForDisplay = () => {
+    console.log('Video ready for display');
+  };
+
+  // Alternative video configuration for Android
+  renderVideo = (uri: string) => {
+    console.log('Rendering video with URI:', uri);
+    return (
+      <Video
+        source={{ uri }}
+        style={{ width: '100%', height: '100%' }}
+        resizeMode="cover"
+        repeat={true}
+        paused={false}
+        muted={true}
+        onLoadStart={() => {
+          console.log('Video load started for:', uri);
+          this.setState({ videoLoading: true, videoError: false });
+        }}
+        onLoad={() => {
+          console.log('Video loaded successfully for:', uri);
+          this.setState({ videoLoading: false, videoError: false });
+        }}
+        onError={error => {
+          console.error('Video error for:', uri, error);
+          this.setState({ videoError: true, videoLoading: false });
+        }}
+        onEnd={() => {
+          console.log('Video ended for:', uri);
+        }}
+        ignoreSilentSwitch="ignore"
+        playInBackground={false}
+        playWhenInactive={false}
+        // Android-specific settings
+        useTextureView={true}
+        controls={false}
+        fullscreen={false}
+      />
+    );
+  };
+
   render() {
     const { text, image, video, type } = this.props.route.params;
     const { navigation } = this.props;
@@ -281,14 +374,44 @@ export default class Squib extends Component<Props, State> {
               }
             >
               {current && current.type === 'video' ? (
-                <Video
-                  source={{ uri: current.uri }}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="cover"
-                  repeat
-                  paused={false}
-                  muted
-                />
+                <View style={{ width: '100%', height: '100%' }}>
+                  {this.state.shouldRenderVideo && !this.state.videoError ? (
+                    <Video
+                      source={{ uri: current.uri }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                      repeat={true}
+                      paused={false}
+                      muted={true}
+                      ignoreSilentSwitch="ignore"
+                      playInBackground={false}
+                      playWhenInactive={false}
+                      useTextureView={false}
+                      controls={false}
+                      fullscreen={false}
+                      onError={() => {
+                        console.log('Video failed, showing fallback image');
+                        this.setState({ videoError: true });
+                      }}
+                    />
+                  ) : this.state.videoError ? (
+                    // Fallback to image if video fails
+                    <Image
+                      source={{
+                        uri:
+                          image && image.length > 0
+                            ? `https://squibturf-images.s3.amazonaws.com//${image[0]}`
+                            : undefined,
+                      }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.loadingContainer}>
+                      <Text style={styles.loadingText}>Loading video...</Text>
+                    </View>
+                  )}
+                </View>
               ) : current ? (
                 <Image
                   source={{ uri: current.uri }}

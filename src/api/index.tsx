@@ -1,6 +1,7 @@
 // @ts-nocheck
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { Platform } from 'react-native';
 import { RNS3 } from 'react-native-aws3';
 import Config from 'react-native-config';
 import 'react-native-get-random-values'; // Must be imported first for uuid to work
@@ -9,16 +10,45 @@ import { v4 as uuidv4 } from 'uuid';
 
 const moment = require('moment');
 
+// Helper function to retry failed requests (especially for Android network issues)
+const retryRequest = async (requestFn, maxRetries = 2, delay = 1000) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      console.log(`👤 API: Request attempt ${attempt} failed:`, error.message);
+
+      if (attempt === maxRetries) {
+        throw error; // Re-throw on final attempt
+      }
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay * attempt));
+      console.log(
+        `👤 API: Retrying request (attempt ${attempt + 1}/${maxRetries})...`
+      );
+    }
+  }
+};
+
 function SquibAPI() {
   this.api = axios.create({
     baseURL: 'https://ji58k1qfwl.execute-api.us-east-1.amazonaws.com/dev',
-    timeout: 10000, // 10 second timeout
+    timeout: 15000, // Increased timeout for Android
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
   });
 
   // Separate API instance for profile endpoint
   this.profileApi = axios.create({
     baseURL: 'https://h38fikktw7.execute-api.us-east-1.amazonaws.com/prod',
-    timeout: 10000, // 10 second timeout
+    timeout: 15000, // Increased timeout for Android
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
   });
   const accessKey = Config.ACCESS_KEY;
   const secretKey = Config.SECRET_KEY;
@@ -32,6 +62,12 @@ function SquibAPI() {
   console.log(
     '🔍 AWS DEBUG: SECRET_KEY length:',
     secretKey ? secretKey.length : 0
+  );
+  console.log('🔍 AWS DEBUG: Platform:', Platform.OS);
+  console.log('🔍 AWS DEBUG: Config object keys:', Object.keys(Config));
+  console.log(
+    '🔍 AWS DEBUG: ACCESS_KEY value (first 10 chars):',
+    accessKey ? accessKey.substring(0, 10) + '...' : 'NULL'
   );
 
   this.s3Options = {
@@ -339,14 +375,41 @@ SquibAPI.prototype.getUserSquibs = async function (
   };
 
   console.log('👤 API: Sending request to /user-squibs with data:', data);
+  console.log('👤 API: Platform:', Platform.OS, 'Version:', Platform.Version);
+  console.log('👤 API: Base URL:', this.api.defaults.baseURL);
+  console.log('👤 API: Timeout:', this.api.defaults.timeout);
+  console.log('👤 API: Default headers:', this.api.defaults.headers);
+
+  // Simple network connectivity test
+  try {
+    console.log('👤 API: Testing basic network connectivity...');
+    const testResponse = await fetch('https://httpbin.org/get', {
+      method: 'GET',
+      timeout: 5000,
+    });
+    console.log(
+      '👤 API: Network connectivity test result:',
+      testResponse.status
+    );
+  } catch (networkError) {
+    console.log(
+      '👤 API: Network connectivity test failed:',
+      networkError.message
+    );
+  }
 
   try {
     console.log('👤 API: Making POST request to /user-squibs...');
-    const response = await this.api.post('/user-squibs', data, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
+
+    // Use retry mechanism for network requests (especially helpful for Android)
+    const response = await retryRequest(async () => {
+      return await this.api.post('/user-squibs', data, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
     });
+
     console.log('👤 API: Received response from /user-squibs:', {
       status: response.status,
       statusText: response.statusText,
@@ -421,12 +484,34 @@ SquibAPI.prototype.getUserSquibs = async function (
     return result;
   } catch (error) {
     console.log('👤 API: Error in getUserSquibs:', {
+      platform: Platform.OS,
+      platformVersion: Platform.Version,
       error: error.message,
       errorType: error.constructor.name,
       hasResponse: !!error.response,
       responseStatus: error.response?.status,
       responseData: error.response?.data,
+      isNetworkError: error.message === 'Network Error',
+      isTimeout: error.code === 'ECONNABORTED',
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        timeout: error.config?.timeout,
+        baseURL: error.config?.baseURL,
+      },
     });
+
+    // Android-specific network error handling
+    if (error.message === 'Network Error') {
+      console.log(
+        '👤 API: Android Network Error detected - this might be a platform-specific issue'
+      );
+      console.log('👤 API: Check network connectivity and try again');
+      console.log('👤 API: Platform details:', {
+        OS: Platform.OS,
+        Version: Platform.Version,
+      });
+    }
 
     return {
       Items: [],
@@ -536,6 +621,23 @@ SquibAPI.prototype.deleteSquib = async function (data) {
   } catch (error) {
     console.log(error.response);
     console.log(error.request);
+  }
+  return response;
+};
+
+SquibAPI.prototype.deleteAccount = async function (email) {
+  let response;
+  try {
+    response = await this.api.delete('/profile', {
+      data: { email },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.log('Error deleting account:', error.response);
+    console.log('Error deleting account:', error.request);
+    throw error;
   }
   return response;
 };

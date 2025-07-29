@@ -230,10 +230,33 @@ export default class Login extends Component<
 
   _onAppleButtonPress = async () => {
     try {
+      console.log('🍎 APPLE: Starting Apple Sign-In process');
+
+      // Check if Apple Sign-In is supported
+      const isSupported = appleAuth.isSupported;
+      if (!isSupported) {
+        Alert.alert(
+          'Apple Sign-In Not Available',
+          'Apple Sign-In is not available on this device. Please use another sign-in method.'
+        );
+        return;
+      }
+
+      console.log(
+        '🍎 APPLE: Apple Sign-In is available, proceeding with request'
+      );
+
       const appleAuthRequestResponse = (await appleAuth.performRequest({
         requestedOperation: appleAuth.Operation.LOGIN,
         requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
       })) as AppleAuthRequestResponse;
+
+      console.log('🍎 APPLE: Apple Sign-In response received:', {
+        hasUser: !!appleAuthRequestResponse.user,
+        hasEmail: !!appleAuthRequestResponse.email,
+        hasFullName: !!appleAuthRequestResponse.fullName,
+        hasIdentityToken: !!appleAuthRequestResponse.identityToken,
+      });
 
       const { fullName, email, user, identityToken } = appleAuthRequestResponse;
 
@@ -241,6 +264,7 @@ export default class Login extends Component<
       const isFirstTimeSignIn = fullName || email;
 
       if (isFirstTimeSignIn) {
+        console.log('🍎 APPLE: First-time sign-in detected');
         // First-time sign-in: Apple provided user data
         const userData = {
           familyName: fullName?.familyName || '',
@@ -256,20 +280,32 @@ export default class Login extends Component<
         };
 
         // If no email from Apple, try to decode from token
-        if (!userData.email) {
+        if (!userData.email && identityToken) {
           try {
             const decoded: any = jwtDecode(identityToken);
             userData.email = decoded.email || '';
-          } catch (decodeError) {}
+            console.log('🍎 APPLE: Decoded email from token:', userData.email);
+          } catch (decodeError) {
+            console.log(
+              '🍎 APPLE: Failed to decode email from token:',
+              decodeError
+            );
+          }
         }
+
+        // Store user data for future sign-ins
+        await AsyncStorage.setItem('userInfo', JSON.stringify(userData));
+        console.log('🍎 APPLE: Stored user data for future sign-ins');
 
         await this._sendData(userData);
       } else {
+        console.log('🍎 APPLE: Subsequent sign-in detected');
         // Check if we have existing user data (user previously consented to store it)
         const existingUser = await AsyncStorage.getItem('userInfo');
         let userData;
 
         if (existingUser) {
+          console.log('🍎 APPLE: Found existing user data');
           // User has existing data (they previously signed in and we stored it)
           const existingUserData = JSON.parse(existingUser);
           userData = {
@@ -282,6 +318,7 @@ export default class Login extends Component<
             photo: existingUserData.photo || null,
           };
         } else {
+          console.log('🍎 APPLE: No existing user data, creating minimal user');
           // No existing data - create minimal user data
           userData = {
             familyName: '',
@@ -296,8 +333,92 @@ export default class Login extends Component<
 
         await this._sendData(userData);
       }
-    } catch (err) {
-      Alert.alert('Apple Sign-In Error', JSON.stringify(err));
+    } catch (err: any) {
+      console.log(
+        '🍎 APPLE: Apple Sign-In Error:',
+        JSON.stringify(err, null, 2)
+      );
+
+      // Extract error code - handle different error object structures
+      let errorCode = null;
+      if (err.code !== undefined) {
+        errorCode = parseInt(err.code);
+      } else if (err.error && err.error.code !== undefined) {
+        errorCode = parseInt(err.error.code);
+      } else if (err.nativeErrorCode !== undefined) {
+        errorCode = parseInt(err.nativeErrorCode);
+      }
+
+      console.log('🍎 APPLE: Extracted error code:', errorCode);
+
+      // Handle specific Apple Sign-In errors
+      if (errorCode === 1000) {
+        // Alert.alert(
+        //   'Apple Sign-In Error',
+        //   "Please make sure you have an Apple ID set up in Settings > Sign in to your iPhone. If you're using a simulator, please set up an Apple ID in the simulator settings."
+        // );
+      } else if (errorCode === 1001) {
+        // User cancelled - this is normal behavior, don't show an error
+        console.log(
+          '🍎 APPLE: User cancelled Apple Sign-In - this is normal behavior'
+        );
+        // Don't show any alert for cancellation - just return silently
+        return;
+      } else if (errorCode === 1002) {
+        Alert.alert(
+          'Apple Sign-In Error',
+          'The sign-in request failed. Please try again.'
+        );
+      } else if (errorCode === 1003) {
+        Alert.alert(
+          'Apple Sign-In Error',
+          'The sign-in request was invalid. Please try again.'
+        );
+      } else if (errorCode === 1004) {
+        Alert.alert(
+          'Apple Sign-In Error',
+          'The sign-in request was not handled. Please try again.'
+        );
+      } else if (errorCode === 1005) {
+        Alert.alert(
+          'Apple Sign-In Error',
+          'The sign-in request failed. Please try again.'
+        );
+      } else if (errorCode === 1006) {
+        Alert.alert(
+          'Apple Sign-In Error',
+          'The sign-in request was not authorized. Please try again.'
+        );
+      } else if (errorCode === 1007) {
+        Alert.alert(
+          'Apple Sign-In Error',
+          'The sign-in request was not authorized. Please try again.'
+        );
+      } else {
+        // For any other error (including undefined error codes),
+        // check if it's likely a cancellation or interruption
+        const errorMessage = err.message || '';
+        const isLikelyCancellation =
+          errorMessage.includes('cancelled') ||
+          errorMessage.includes('canceled') ||
+          errorMessage.includes('interrupted') ||
+          errorMessage.includes('user') ||
+          errorCode === null ||
+          errorCode === undefined;
+
+        if (isLikelyCancellation) {
+          console.log(
+            '🍎 APPLE: Likely cancellation/interruption - not showing error to user'
+          );
+          // Don't show any alert for likely cancellations - just return silently
+          return;
+        } else {
+          Alert.alert(
+            'Apple Sign-In Error',
+            `An unexpected error occurred: ${errorMessage || 'Unknown error'}`
+          );
+        }
+      }
     }
   };
 

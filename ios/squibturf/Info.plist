@@ -69,11 +69,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs access to your camera to take photos for creating squibs.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs access to your location to provide location-based features even when the app is in the background.</string>
+	<string>SquibTurf uses your location to show you squibs posted by people near you and to tag your own squibs with your current location (city, state, country) so others can see where you posted from.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app needs access to your location at all times.</string>
+	<string>SquibTurf uses your location to show you squibs posted by people near you and to tag your own squibs with your current location (city, state, country) so others can see where you posted from.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs access to your location while you are using the app.</string>
+	<string>SquibTurf uses your location to show you squibs posted by people near you and to tag your own squibs with your current location (city, state, country) so others can see where you posted from.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app needs access to your photo library to save photos from squibs.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

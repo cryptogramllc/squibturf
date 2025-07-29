@@ -55,6 +55,14 @@ react {
     autolinkLibrariesWithApp()
 }
 
+configurations.all {
+    resolutionStrategy {
+        dependencySubstitution {
+            substitute module('com.facebook.react:react-native-camera') using module('com.facebook.react:react-native-camera:4.2.1') because 'Resolving variant conflict'
+        }
+    }
+}
+
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
@@ -133,13 +141,5 @@ dependencies {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
-    }
-}
-
-configurations.all {
-    resolutionStrategy {
-        dependencySubstitution {
-            substitute module('com.facebook.react:react-native-camera') using module('com.facebook.react:react-native-camera:4.2.1') because 'Resolving variant conflict'
-        }
     }
 }
