@@ -316,11 +316,10 @@ export default class CreateSquib extends Component<
           }));
         }, 100);
 
-        // Start video recording with optimized settings for GIF conversion
         const options = {
           quality: RNCamera.Constants.VideoQuality['288p'], // Lowest available quality for smaller file
           maxDuration: 10,
-          maxFileSize: 10 * 1024 * 1024, // 10MB limit
+          maxFileSize: 1 * 1024 * 1024, // 1MB limit
           mute: false,
           codec: RNCamera.Constants.VideoCodec.H264, // Standard codec for better compatibility
         };

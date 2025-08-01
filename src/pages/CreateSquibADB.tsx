@@ -500,7 +500,7 @@ export default class CreateSquibADB extends Component<
     try {
       const result = await launchCamera({
         mediaType: 'video',
-        videoQuality: 'medium',
+        videoQuality: 'low',
         durationLimit: 10, // 10 second limit
         saveToPhotos: false,
         includeBase64: false,
@@ -1207,7 +1207,7 @@ export default class CreateSquibADB extends Component<
                 borderRadius: 25,
                 height: 50,
                 width: 120,
-                right: 20,
+                left: 20,
                 bottom: 50,
                 justifyContent: 'center',
                 alignItems: 'center',
