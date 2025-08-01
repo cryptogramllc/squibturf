@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import React, { Component, createRef } from 'react';
+import React, { Component, createRef, memo } from 'react';
 import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
@@ -15,13 +15,14 @@ import CreateSquib from './src/pages/CreateSquib';
 import CreateSquibADB from './src/pages/CreateSquibADB';
 import Login from './src/pages/Login';
 import MySquibs from './src/pages/MySquibs';
-import { clearMySquibsData } from './src/pages/MySquibsDataCache';
+
 import NewsPage from './src/pages/NewsPage';
 import { clearNewsPageData } from './src/pages/NewsPageDataCache';
 import Profile from './src/pages/Profile';
 import ProfileCompletion from './src/pages/ProfileCompletion';
 import ProfileEdit from './src/pages/ProfileEdit';
 import Squib from './src/pages/Squib';
+import SquibADB from './src/pages/SquibADB';
 import NewsCache from './src/services/NewsCache';
 const SquibApi = require('./src/api');
 
@@ -40,6 +41,8 @@ interface AppState {
 
 interface HomeProps {
   onTabChange?: (tab: string) => void;
+  navigation?: any;
+  route?: any;
 }
 
 interface HomeState {
@@ -51,6 +54,24 @@ interface HomeState {
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Wrapper component for NewsPage to avoid inline functions
+class NewsPageWrapper extends Component<any> {
+  render() {
+    return <NewsPage {...this.props} />;
+  }
+}
+
+// Create a memoized NewsPage component to prevent remounting
+const MemoizedNewsPage = memo(NewsPage);
+
+// Create a wrapper component that can receive refreshTrigger
+class NewsPageWithRefresh extends Component<any> {
+  render() {
+    const refreshTrigger = this.props.route?.params?.refreshTrigger || 0;
+    return <NewsPage {...this.props} refreshTrigger={refreshTrigger} />;
+  }
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -74,6 +95,8 @@ const styles = StyleSheet.create({
 
 export class Home extends Component<HomeProps, HomeState> {
   api: typeof SquibApi;
+  private newsPageRef = createRef<any>();
+
   constructor(props: HomeProps) {
     super(props);
     this.state = {
@@ -88,8 +111,9 @@ export class Home extends Component<HomeProps, HomeState> {
   updateParentTab = (tab: string) => {
     this.setState({ currentTab: tab });
     // Update parent App component's state
-    if (this.props.onTabChange) {
-      this.props.onTabChange(tab);
+    const onTabChange = this.props.route?.params?.onTabChange;
+    if (onTabChange) {
+      onTabChange(tab);
     }
   };
 
@@ -102,12 +126,12 @@ export class Home extends Component<HomeProps, HomeState> {
             tabBarActiveTintColor: '#000',
             headerShown: false,
           }}
+          detachInactiveScreens={false}
         >
           <Tab.Screen
             name="Turf"
-            component={(props: any) => (
-              <NewsPage {...props} refreshTrigger={this.state.refreshTrigger} />
-            )}
+            component={NewsPageWithRefresh}
+            initialParams={{ refreshTrigger: this.state.refreshTrigger }}
             options={{
               tabBarIcon: ({ color }) => (
                 <Icon
@@ -193,6 +217,10 @@ export class Home extends Component<HomeProps, HomeState> {
                   this.setState(prevState => ({
                     refreshTrigger: prevState.refreshTrigger + 1,
                   }));
+                  // Update the navigation params for the Turf screen
+                  this.props.navigation?.setParams({
+                    refreshTrigger: this.state.refreshTrigger + 1,
+                  });
                 }
               }}
             />
@@ -206,6 +234,10 @@ export class Home extends Component<HomeProps, HomeState> {
                   this.setState(prevState => ({
                     refreshTrigger: prevState.refreshTrigger + 1,
                   }));
+                  // Update the navigation params for the Turf screen
+                  this.props.navigation?.setParams({
+                    refreshTrigger: this.state.refreshTrigger + 1,
+                  });
                 }
               }}
             />
@@ -279,9 +311,8 @@ export default class App extends Component<AppProps, AppState> {
             />
             <Stack.Screen
               name="News"
-              component={(props: any) => (
-                <Home {...props} onTabChange={this.handleTabChange} />
-              )}
+              component={Home}
+              initialParams={{ onTabChange: this.handleTabChange }}
               options={{
                 title: this.state.currentTab === 'Turf' ? 'Turf' : 'My Squibs',
                 headerStyle: {
@@ -327,7 +358,11 @@ export default class App extends Component<AppProps, AppState> {
             />
             <Stack.Screen
               name="Squib"
-              component={Squib as React.ComponentType<any>}
+              component={
+                Platform.OS === 'android'
+                  ? (SquibADB as React.ComponentType<any>)
+                  : (Squib as React.ComponentType<any>)
+              }
               options={{ headerShown: false }}
             />
             <Stack.Screen
@@ -361,10 +396,6 @@ export default class App extends Component<AppProps, AppState> {
               // Clear all profile caches when user signs out
               clearAllProfileCache();
               console.log('✅ Cleared profile caches');
-
-              // Clear MySquibs data cache
-              clearMySquibsData();
-              console.log('✅ Cleared MySquibs data cache');
 
               // Clear NewsPage data cache
               clearNewsPageData();

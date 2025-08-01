@@ -24,13 +24,11 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache duration
 // Utility function to clear cache for a specific user (useful when profile is updated)
 export const clearUserProfileCache = (userId: string) => {
   profilePhotoCache.delete(userId);
-  console.log('Cleared profile cache for user:', userId);
 };
 
 // Utility function to clear entire cache
 export const clearAllProfileCache = () => {
   profilePhotoCache.clear();
-  console.log('Cleared all profile cache');
 };
 
 interface NewsItemProps {
@@ -156,13 +154,6 @@ const NewsItem: React.FC<NewsItemProps> = ({
   // Fetch user profile picture for all users with caching
   useEffect(() => {
     const fetchProfilePicture = async () => {
-      console.log(
-        '🖼️ NewsItem: Starting profile photo fetch for user:',
-        userId,
-        'name:',
-        name
-      );
-
       if (userId) {
         // Check cache first
         const cached = profilePhotoCache.get(userId);
@@ -170,45 +161,19 @@ const NewsItem: React.FC<NewsItemProps> = ({
 
         if (cached && now - cached.timestamp < CACHE_DURATION) {
           // Use cached data if it's still valid
-          console.log(
-            '🖼️ NewsItem: Using cached profile photo for user:',
-            userId,
-            'photo:',
-            cached.photo
-          );
           setProfilePicture(cached.photo);
           return;
         }
 
         try {
-          console.log(
-            '🖼️ NewsItem: Fetching profile from API for user:',
-            userId
-          );
           const api = new SquibApi();
           const response = await api.getProfile(userId);
-          console.log(
-            '🖼️ NewsItem: API response for user',
-            userId,
-            ':',
-            response
-          );
 
           let photoUrl = null;
           if (response && response.data && response.data.photo) {
             photoUrl = response.data.photo;
-            console.log(
-              '🖼️ NewsItem: Setting profile photo for user:',
-              userId,
-              'photo:',
-              photoUrl
-            );
             setProfilePicture(photoUrl);
           } else {
-            console.log(
-              '🖼️ NewsItem: No photo found in API response for user:',
-              userId
-            );
           }
 
           // Cache the result (even if null, to avoid repeated failed calls)
@@ -216,21 +181,7 @@ const NewsItem: React.FC<NewsItemProps> = ({
             photo: photoUrl,
             timestamp: now,
           });
-
-          console.log(
-            '🖼️ NewsItem: Cached profile photo for user:',
-            userId,
-            'photo:',
-            photoUrl
-          );
         } catch (error) {
-          console.error(
-            '🖼️ NewsItem: Error fetching profile picture for user',
-            userId,
-            ':',
-            error
-          );
-
           // Cache null result to avoid repeated failed calls
           profilePhotoCache.set(userId, {
             photo: null,
@@ -238,7 +189,6 @@ const NewsItem: React.FC<NewsItemProps> = ({
           });
         }
       } else {
-        console.log('🖼️ NewsItem: No userId provided for user:', name);
       }
     };
 
@@ -277,33 +227,13 @@ const NewsItem: React.FC<NewsItemProps> = ({
                             'squibturf-images.s3.us-east-1.amazonaws.com//'
                           )
                         : photoUrl;
-                    console.log(
-                      '🖼️ NewsItem: Loading profile photo URL:',
-                      finalPhotoUrl
-                    );
                     return finalPhotoUrl;
                   })(),
                 }}
                 style={styles.userProfilePic}
-                onLoadStart={() => {
-                  console.log(
-                    '🖼️ NewsItem: Profile photo load started for user:',
-                    name
-                  );
-                }}
-                onLoad={() => {
-                  console.log(
-                    '🖼️ NewsItem: Profile photo loaded successfully for user:',
-                    name
-                  );
-                }}
+                onLoadStart={() => {}}
+                onLoad={() => {}}
                 onError={error => {
-                  console.error(
-                    '🖼️ NewsItem: Profile photo failed to load for user:',
-                    name,
-                    'error:',
-                    error.nativeEvent
-                  );
                   // Fallback to teal circle if image fails to load
                   setProfilePicture(null);
                 }}
@@ -399,22 +329,9 @@ const NewsItem: React.FC<NewsItemProps> = ({
                         styles.newsItem_media,
                         { flexBasis: `${mediaFlexBasis}%` },
                       ]}
-                      onLoadStart={() => {
-                        console.log(
-                          `[NewsItem] [${key}] Loading image: https://squibturf-images.s3.amazonaws.com//${image}`
-                        );
-                      }}
-                      onLoad={() => {
-                        console.log(
-                          `[NewsItem] [${key}] Loaded image successfully: https://squibturf-images.s3.amazonaws.com//${image}`
-                        );
-                      }}
-                      onError={e => {
-                        console.error(
-                          `[NewsItem] [${key}] Failed to load image: https://squibturf-images.s3.amazonaws.com//${image}`,
-                          e.nativeEvent
-                        );
-                      }}
+                      onLoadStart={() => {}}
+                      onLoad={() => {}}
+                      onError={e => {}}
                     />
                   )
               )}
@@ -437,25 +354,12 @@ const NewsItem: React.FC<NewsItemProps> = ({
                         }}
                         style={[styles.newsItem_media, { width: '100%' }]}
                         resizeMode="cover"
-                        repeat={true}
-                        paused={false}
+                        repeat={false}
+                        paused={true}
                         muted={true}
-                        onLoadStart={() => {
-                          console.log(
-                            `[NewsItem] [${key}] Loading video: https://squibturf-images.s3.amazonaws.com//${videoFile}`
-                          );
-                        }}
-                        onLoad={() => {
-                          console.log(
-                            `[NewsItem] [${key}] Loaded video successfully: https://squibturf-images.s3.amazonaws.com//${videoFile}`
-                          );
-                        }}
-                        onError={e => {
-                          console.error(
-                            `[NewsItem] [${key}] Failed to load video: https://squibturf-images.s3.amazonaws.com//${videoFile}`,
-                            e
-                          );
-                        }}
+                        onLoadStart={() => {}}
+                        onLoad={() => {}}
+                        onError={e => {}}
                       />
                     </View>
                   )

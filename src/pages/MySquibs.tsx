@@ -3,7 +3,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   RefreshControl,
   StatusBar,
@@ -13,13 +12,6 @@ import {
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import NewsItem from '../components/NewsItem';
-import {
-  clearMySquibsData,
-  mySquibsData,
-  mySquibsLastKey,
-  setMySquibsData,
-} from './MySquibsDataCache';
-import { mySquibsScrollY, setMySquibsScrollY } from './MySquibsScrollState';
 const SquibApi = require('../api');
 
 interface NewsItemData {
@@ -51,7 +43,6 @@ interface State {
     photo?: string;
     uuid?: string;
   } | null;
-  showScrollRestoreOverlay?: boolean;
   authError: boolean;
   authErrorMessage: string;
   isLoading: boolean;
@@ -60,13 +51,8 @@ interface State {
 export default class MySquibs extends React.Component<Props, State> {
   private api;
   private flatListRef = React.createRef<FlatList<NewsItemData>>();
-  private focusListener: any;
-  private restoreInProgress = false;
-  private lastRestoreAttempt = 0;
-  private windowHeight = Dimensions.get('window').height;
-  private restoreTimeout: any = null;
-  private failsafeTimeout: any = null;
   private loadedKeys: Set<any> = new Set();
+  private scrollPosition = 0;
 
   constructor(props: Props) {
     super(props);
@@ -77,7 +63,6 @@ export default class MySquibs extends React.Component<Props, State> {
       lastKey: null,
       loadingMore: false,
       currentUser: null,
-      showScrollRestoreOverlay: false,
       authError: false,
       authErrorMessage: '',
       isLoading: false,
@@ -85,52 +70,19 @@ export default class MySquibs extends React.Component<Props, State> {
   }
 
   async componentDidMount() {
-    if (mySquibsData.length > 0) {
-      this.setState({
-        squibs: mySquibsData,
-        lastKey: mySquibsLastKey,
-        showScrollRestoreOverlay: true,
-      });
-      this.restoreInProgress = true;
-      this.lastRestoreAttempt = mySquibsScrollY;
-      // Do NOT add mySquibsLastKey to loadedKeys here!
-      // Failsafe: hide overlay after 2 seconds
-      this.failsafeTimeout = setTimeout(() => {
-        if (this.state.showScrollRestoreOverlay) {
-          this.setState({ showScrollRestoreOverlay: false });
-          this.restoreInProgress = false;
-        }
-      }, 2000);
-    } else {
-      this._getData();
-    }
+    this._getData();
     this._loadCurrentUser();
-    this.focusListener = this.props.navigation?.addListener('focus', () => {
-      this._loadCurrentUser();
-      if (this.flatListRef.current && this.state.squibs.length > 0) {
-        this.tryRestoreScroll();
+
+    // Restore scroll position after a short delay to ensure the list is rendered
+    setTimeout(() => {
+      if (this.scrollPosition > 0 && this.flatListRef.current) {
+        this.flatListRef.current.scrollToOffset({
+          offset: this.scrollPosition,
+          animated: false,
+        });
       }
-    });
+    }, 100);
   }
-
-  componentWillUnmount() {
-    if (this.focusListener) this.focusListener();
-    if (this.restoreTimeout) clearTimeout(this.restoreTimeout);
-    if (this.failsafeTimeout) clearTimeout(this.failsafeTimeout);
-  }
-
-  tryRestoreScroll = () => {
-    if (
-      this.restoreInProgress &&
-      this.flatListRef.current &&
-      this.lastRestoreAttempt > 0
-    ) {
-      this.flatListRef.current.scrollToOffset({
-        offset: this.lastRestoreAttempt,
-        animated: false,
-      });
-    }
-  };
 
   async _loadCurrentUser() {
     try {
@@ -183,6 +135,17 @@ export default class MySquibs extends React.Component<Props, State> {
   }
 
   async _getData(lastKey = null, append = false) {
+    // Don't reload if we already have data and this isn't a refresh or append
+    if (
+      !append &&
+      !lastKey &&
+      this.state.squibs.length > 0 &&
+      !this.state.refreshing
+    ) {
+      console.log('🔄 MySquibs: Skipping data reload - already have data');
+      return;
+    }
+
     // First check if we have valid authentication
     const isAuthenticated = await this._loadCurrentUser();
 
@@ -220,7 +183,6 @@ export default class MySquibs extends React.Component<Props, State> {
             const dateB = b.date_key || b.time_stamp || 0;
             return dateB - dateA;
           });
-          setMySquibsData(newSquibs, data.LastEvaluatedKey || null);
           if (append && lastKey) this.loadedKeys.add(lastKey);
           return {
             squibs: newSquibs,
@@ -234,7 +196,6 @@ export default class MySquibs extends React.Component<Props, State> {
         });
       } else {
         console.log('🔐 MySquibs: No data returned from API');
-        setMySquibsData(append ? this.state.squibs : [], null);
         this.setState({
           squibs: append ? this.state.squibs : [],
           refreshing: false,
@@ -269,7 +230,6 @@ export default class MySquibs extends React.Component<Props, State> {
   }
 
   _onRefresh = () => {
-    clearMySquibsData();
     this.loadedKeys.clear();
     this.setState({ refreshing: true, lastKey: null }, () => this._getData());
   };
@@ -287,7 +247,6 @@ export default class MySquibs extends React.Component<Props, State> {
       refreshing,
       loadingMore,
       currentUser,
-      showScrollRestoreOverlay,
       authError,
       authErrorMessage,
       isLoading,
@@ -297,23 +256,6 @@ export default class MySquibs extends React.Component<Props, State> {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar backgroundColor="blue" barStyle="light-content" />
-        {showScrollRestoreOverlay && (
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 10,
-              backgroundColor: 'white',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <ActivityIndicator size="large" color="#44C1AF" />
-          </View>
-        )}
         {authError ? (
           <View
             style={{
@@ -452,7 +394,9 @@ export default class MySquibs extends React.Component<Props, State> {
                 tintColor="#44C1AF"
               />
             }
-            onScroll={e => setMySquibsScrollY(e.nativeEvent.contentOffset.y)}
+            onScroll={e => {
+              this.scrollPosition = e.nativeEvent.contentOffset.y;
+            }}
             scrollEventThrottle={16}
             onEndReached={this._onEndReached}
             onEndReachedThreshold={0.1}
@@ -471,34 +415,6 @@ export default class MySquibs extends React.Component<Props, State> {
             maxToRenderPerBatch={10}
             windowSize={10}
             initialNumToRender={10}
-            onContentSizeChange={(w, h) => {
-              if (
-                this.restoreInProgress &&
-                this.flatListRef.current &&
-                this.lastRestoreAttempt > 0
-              ) {
-                if (h > this.lastRestoreAttempt + this.windowHeight) {
-                  this.flatListRef.current.scrollToOffset({
-                    offset: this.lastRestoreAttempt,
-                    animated: false,
-                  });
-                  this.restoreInProgress = false;
-                  if (this.restoreTimeout) clearTimeout(this.restoreTimeout);
-                  if (this.failsafeTimeout) clearTimeout(this.failsafeTimeout);
-                  this.setState({ showScrollRestoreOverlay: false });
-                } else {
-                  if (this.restoreTimeout) clearTimeout(this.restoreTimeout);
-                  this.restoreTimeout = setTimeout(() => {
-                    if (this.restoreInProgress && this.flatListRef.current) {
-                      this.flatListRef.current.scrollToOffset({
-                        offset: this.lastRestoreAttempt,
-                        animated: false,
-                      });
-                    }
-                  }, 100);
-                }
-              }
-            }}
           />
         ) : (
           <View
