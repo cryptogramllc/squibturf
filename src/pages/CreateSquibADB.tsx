@@ -29,7 +29,7 @@ import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Video from 'react-native-video';
 import {
   Camera,
-  useCameraDevices,
+  useCameraDevice,
   useCameraPermission,
 } from 'react-native-vision-camera';
 
@@ -108,13 +108,15 @@ const VisionCameraWrapper = ({
   onCameraRef: (ref: any) => void;
 }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const devices = useCameraDevices();
 
-  // Get the first available device as fallback
-  const device =
-    (devices as any).back ||
-    (devices as any).front ||
-    Object.values(devices as any)[0];
+  // Use the recommended useCameraDevice hook approach
+  const device = useCameraDevice(backCam ? 'back' : 'front');
+
+  // Debug: Log the selected device
+  console.log('🔍 ANDROID LOCATION DEBUG: backCam state:', backCam);
+  console.log('🔍 ANDROID LOCATION DEBUG: Selected device:', device);
+  console.log('🔍 ANDROID LOCATION DEBUG: Device position:', device?.position);
+  console.log('🔍 ANDROID LOCATION DEBUG: Device ID:', device?.id);
 
   React.useEffect(() => {
     if (!hasPermission) {
@@ -139,8 +141,8 @@ const VisionCameraWrapper = ({
 
   if (!device) {
     console.log(
-      '🔍 ANDROID LOCATION DEBUG: No camera device found. Devices:',
-      devices
+      '🔍 ANDROID LOCATION DEBUG: No camera device found for position:',
+      backCam ? 'back' : 'front'
     );
     return (
       <View
@@ -153,7 +155,7 @@ const VisionCameraWrapper = ({
       >
         <Text style={{ color: 'white' }}>No camera device available</Text>
         <Text style={{ color: 'white', fontSize: 12, marginTop: 10 }}>
-          Devices: {JSON.stringify(devices)}
+          Position: {backCam ? 'back' : 'front'}
         </Text>
       </View>
     );
